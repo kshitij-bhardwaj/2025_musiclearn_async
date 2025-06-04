@@ -30,7 +30,8 @@ Your directory structure should look like this:
 ```
 project/
 ├── metadata.csv
-├── pitch_extractor.py
+├── pitch_contour_extractor.py
+├── pitch_normalised_contour_extractor.py
 ├── audio_subset/
 │   ├── student/
 │   │   ├── 20220408145911.wav
@@ -40,8 +41,11 @@ project/
 │       ├── 20220330100622.wav
 │       ├── 20220329084512.wav
 │       └── ...
-├── pitch_plots/
-└── pitch_data_extracted.csv
+└── output/
+    ├── pitch_plots/
+    ├── pitch_plots_normalised/
+    ├── pitch_normalised_analysis_summary.csv
+    └── pitch_data_extracted.csv
 ```
 
 ### Metadata CSV Format
