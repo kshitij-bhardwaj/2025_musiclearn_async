@@ -7,8 +7,9 @@
 3. [Understanding the Data Structure](#understanding-the-data-structure)
 4. [Method 1: Using Parselmouth (Recommended)](#method-1-using-parselmouth-recommended)
 5. [Normalisation Techniques](#normalisation-techniques)
-6. [Advanced Features - Not yet implemented](#advanced-features)
-7. [Troubleshooting](#troubleshooting)
+6. [DTW Analysis](#dtw-analysis)
+7. [Advanced Features - Not yet implemented](#advanced-features)
+8. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -249,6 +250,72 @@ normalized_pitch = voiced_frames - speaker_mean  # Mean-centered
 - **Choose normalization method based on research questions**
 - **Document which method used for reproducibility**
 - **Consider voicing detection before normalization**
+
+
+## DTW Analysis
+
+## Data Flow Summary
+
+The DTW pipeline processes your metadata.csv and audio files to produce comprehensive analysis results without requiring intermediate CSV storage. Here's what the pipeline does:
+
+### Input Processing
+- Reads `metadata.csv` with student-teacher audio file pairs
+- Extracts pitch contours from WAV files using Parselmouth
+- Applies semitone normalization relative to each speaker's mean frequency
+
+### DTW Analysis Components
+1. **Cost Matrix Computation**: Uses log-scale distance function
+2. **Optimal Path Finding**: Dynamic programming algorithm
+3. **SARGAM Note Mapping**: Maps frequencies to Sa, Re, Ga, Ma, Pa, Dha, Ni
+4. **Duration Metrics**: Calculates student performance duration only
+5. **Cost Aggregation**: Both average and maximum methods for each note pair
+
+### Output Structure
+
+#### Per-Pair Results
+```python
+result = {
+    'pair_id': 'pair_0',
+    'cost_matrix': numpy_array,           # NxM matrix of log distances
+    'accumulated_cost': numpy_array,      # DTW accumulated costs
+    'optimal_path': [(i,j), ...],        # List of aligned frame indices
+    'total_dtw_cost': float,              # Final DTW cost
+    'path_length': int,                   # Number of alignment points
+    'student_duration': float,            # Duration in seconds
+    'note_correspondences': {
+        'student_notes': ['Sa', 'Re', ...],
+        'teacher_notes': ['Sa', 'Re', ...],
+        'note_pair_costs': {('Sa','Sa'): [0.02, 0.03, ...], ...}
+    },
+    'cost_aggregation': {
+        'average': {('Sa','Sa'): 0.025, ('Sa','Re'): 0.067, ...},
+        'max': {('Sa','Sa'): 0.045, ('Sa','Re'): 0.089, ...}
+    }
+}
+```
+
+#### Summary CSV Output
+The pipeline generates `dtw_analysis_results.csv` with columns:
+- pair_id, student_file, teacher_file
+- total_dtw_cost, path_length, student_duration  
+- avg_cost_Sa_to_Sa, avg_cost_Sa_to_Re, etc.
+- max_cost_Sa_to_Sa, max_cost_Sa_to_Re, etc.
+
+### Usage Example
+```python
+# Extract pitch data directly
+pitch_data = process_metadata_csv('metadata.csv', normalization_method='semitones')
+
+# Initialize DTW analyzer  
+dtw_analyzer = DTWAnalyzer(pitch_data)
+
+# Run analysis on all pairs
+results = dtw_analyzer.run_full_analysis()
+
+# Visualize first pair
+first_pair = list(results.keys())[0]
+dtw_analyzer.visualize_cost_matrix(results[first_pair])
+```
 
 ## Advanced Features - Not yet implemented
 
