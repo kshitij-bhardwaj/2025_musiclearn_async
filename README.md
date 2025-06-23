@@ -8,8 +8,9 @@
 4. [Method 1: Using Parselmouth (Recommended)](#method-1-using-parselmouth-recommended)
 5. [Normalisation Techniques](#normalisation-techniques)
 6. [DTW Analysis](#dtw-analysis)
-7. [Advanced Features - Not yet implemented](#advanced-features)
-8. [Troubleshooting](#troubleshooting)
+7. [Results](#results)
+8. [Advanced Features - Not yet implemented](#advanced-features)
+9. [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
 
@@ -316,6 +317,38 @@ results = dtw_analyzer.run_full_analysis()
 first_pair = list(results.keys())[0]
 dtw_analyzer.visualize_cost_matrix(results[first_pair])
 ```
+## Results
+
+---
+
+## Example Plots for `pair_0`
+
+### 1. Raw Pitch Contour
+
+![Raw Pitch Contour](output/pitch_plots/pitch_comparison_s_20220407121244.png)
+
+### 2. Normalized Pitch Contour
+
+![Normalized Pitch Contour](output/pitch_plots_normalised/pitch_contours_pair_0.png)
+
+
+### 3. Sargam Segmentation (Hz)
+
+![Sargam Segments Hz](output/pitch_plots_segments_sargam/sargam_segments_pair_0.png)
+
+### 4. Sargam Segmentation (Normalized)
+
+![Sargam Segments Normalized](output/pitch_plots_segments_sargam_norm/sargam_segments_normalized_pair_0.png)
+
+### 5. Sargam Y-Axis (Normalized)
+
+![Sargam Y-Axis Normalized](output/pitch_plots_segments_sargam_yaxis/sargam_yaxis_pair_0.png)
+
+---
+
+(DTW Plots yet to be added)
+
+---
 
 ## Advanced Features - Not yet implemented
 

@@ -1,4 +1,4 @@
 audio_subset/
-metadata.csv
+# metadata.csv
 main.ipynb
 dtw_student_teacher_analysis.py

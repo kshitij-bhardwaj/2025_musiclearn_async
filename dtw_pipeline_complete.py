@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import parselmouth
 import os
 from pathlib import Path
+import librosa
 
 def extract_and_normalize_pitch(audio_file, pitch_floor=50, pitch_ceiling=800, normalization_method='semitones'):
     """
@@ -115,11 +116,81 @@ def process_metadata_csv(metadata_file, normalization_method='semitones'):
     
     return results
 
-# SARGAM note mapping
-SARGAM_NOTES = {
-    'Sa': 261.63, 'Re': 293.66, 'Ga': 329.63, 
-    'Ma': 349.23, 'Pa': 392.00, 'Dha': 440.00, 'Ni': 493.88
-}
+def get_sargam_boundaries(sa_freq):
+    """
+    Given the tonic frequency (Sa), return swara names and frequency boundaries for one octave.
+    """
+    swaras = [
+        "Sa", "Komal Re", "Shuddh Re", "Komal Ga", "Shuddh Ga", "Ma", "Tivra Ma",
+        "Pa", "Komal Dha", "Shuddh Dha", "Komal Ni", "Shuddh Ni", "Sa (next)"
+    ]
+    # Semitone offsets for each swara
+    offsets = np.arange(13)
+    # Calculate frequencies for each swara
+    swara_freqs = sa_freq * (2 ** (offsets / 12))
+    # Boundaries: midpoints between swaras
+    boundaries = [(swara_freqs[i] + swara_freqs[i+1]) / 2 for i in range(len(swara_freqs)-1)]
+    # Add min/max for outer boundaries
+    boundaries = [swara_freqs[0] - (boundaries[0] - swara_freqs[0])] + boundaries + [swara_freqs[-1] + (swara_freqs[-1] - boundaries[-1])]
+    return swaras, boundaries, swara_freqs
+
+def segment_pitch_by_sargam(pitch, boundaries):
+    """Assign each pitch value to a swara index based on sargam boundaries."""
+    return np.digitize(pitch, boundaries)
+
+def plot_pitch_with_sargam_segments(times, pitch, sa_freq, title, color, ax):
+    swaras, boundaries, swara_freqs = get_sargam_boundaries(sa_freq)
+    swara_indices = segment_pitch_by_sargam(pitch, boundaries)
+    ax.plot(times, pitch, color=color, linewidth=2)
+    ax.set_title(title)
+    ax.set_ylabel('Frequency (Hz)')
+    ax.grid(True, alpha=0.3)
+    # Overlay swara segments
+    for i, swara in enumerate(swaras):
+        mask = swara_indices == i
+        if np.any(mask):
+            ax.hlines(np.mean(pitch[mask]), times[mask][0], times[mask][-1], colors='k', linestyles='dashed', alpha=0.5)
+            ax.text(times[mask][0], np.mean(pitch[mask]), swara, verticalalignment='bottom', fontsize=9, color='k')
+    ax.legend([title])
+
+def plot_normalized_pitch_with_sargam_segments(times, norm_pitch, raw_pitch_hz, sa_freq, title, color, ax):
+    swaras, boundaries, swara_freqs = get_sargam_boundaries(sa_freq)
+    swara_indices = segment_pitch_by_sargam(raw_pitch_hz, boundaries)
+    ax.plot(times, norm_pitch, color=color, linewidth=2)
+    ax.set_title(title)
+    ax.set_ylabel('Normalized Pitch')
+    ax.grid(True, alpha=0.3)
+    for i, swara in enumerate(swaras):
+        mask = swara_indices == i
+        if np.any(mask):
+            ax.hlines(np.mean(norm_pitch[mask]), times[mask][0], times[mask][-1], colors='k', linestyles='dashed', alpha=0.5)
+            ax.text(times[mask][0], np.mean(norm_pitch[mask]), swara, verticalalignment='bottom', fontsize=9, color='k')
+    ax.legend([title])
+
+def plot_normalized_pitch_with_sargam_yaxis(times, norm_pitch, raw_pitch_hz, sa_freq, title, color, ax):
+    """
+    Plot normalized pitch with y-axis as Sargam (swara) note names.
+    """
+    swaras, boundaries, swara_freqs = get_sargam_boundaries(sa_freq)
+    swara_indices = segment_pitch_by_sargam(raw_pitch_hz, boundaries)
+    ax.plot(times, norm_pitch, color=color, linewidth=2)
+    ax.set_title(title)
+    ax.set_ylabel('Sargam (Swara)')
+    ax.grid(True, alpha=0.3)
+    # Set y-ticks at the mean normalized pitch for each swara
+    yticks = []
+    yticklabels = []
+    for i, swara in enumerate(swaras):
+        mask = swara_indices == i
+        if np.any(mask):
+            mean_val = np.mean(norm_pitch[mask])
+            yticks.append(mean_val)
+            yticklabels.append(swara)
+            # Optionally, annotate on plot
+            ax.text(times[mask][0], mean_val, swara, verticalalignment='bottom', fontsize=9, color='k')
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(yticklabels)
+    ax.legend([title])
 
 class DTWAnalyzer:
     def __init__(self, pitch_data):
@@ -209,51 +280,43 @@ class DTWAnalyzer:
         return acc_cost, path
     
     # This section is to be verified
-    def map_to_sargam(self, frequency):
+    def map_to_scale_note(self, frequency, scale_str):
         """
-        Map frequency to nearest SARGAM note
+        Map frequency to nearest note in the provided scale.
         """
         if frequency <= 0:
             return 'Silence'
-            
-        # Convert back to Hz if using semitones (approximate)
-        if abs(frequency) < 50:  # Likely semitone representation
-            # This is a rough approximation - you may need to adjust based on your normalization
-            freq_hz = 220 * (2 ** (frequency / 12))  # Using A3 as reference
-        else:
-            freq_hz = abs(frequency)
-        
-        distances = {note: abs(freq_hz - freq) for note, freq in SARGAM_NOTES.items()}
-        return min(distances, key=distances.get)
+        notes, boundaries = get_sargam_boundaries(scale_str)
+        note_hz = librosa.note_to_hz(notes)
+        idx = np.argmin(np.abs(note_hz - abs(frequency)))
+        return notes[idx]
     
     def analyze_note_correspondences(self, pair_data, cost_matrix, path):
         """
-        Analyze note correspondences and calculate durations
+        Analyze note correspondences and calculate durations using scale notes.
         """
         student_pitch = pair_data['student']['pitch']
         teacher_pitch = pair_data['teacher']['pitch']
         student_times = pair_data['student']['times']
-        
-        # Map frequencies to SARGAM notes
-        student_notes = [self.map_to_sargam(f) for f in student_pitch]
-        teacher_notes = [self.map_to_sargam(f) for f in teacher_pitch]
-        
-        # Calculate student duration (as requested)
+        s_scale = pair_data['metadata']['s_scale']
+        t_scale = pair_data['metadata']['t_scale']
+
+        # Map frequencies to scale notes
+        student_notes = [self.map_to_scale_note(f, s_scale) for f in student_pitch]
+        teacher_notes = [self.map_to_scale_note(f, t_scale) for f in teacher_pitch]
+
         student_duration = student_times[-1] - student_times[0] if len(student_times) > 1 else 0
-        
-        # Collect note pair costs along optimal path
+
         note_pair_costs = {}
-        
         for i, j in path:
             s_note = student_notes[i] if i < len(student_notes) else 'Silence'
             t_note = teacher_notes[j] if j < len(teacher_notes) else 'Silence'
             note_pair = (s_note, t_note)
             cost = cost_matrix[i, j]
-            
             if note_pair not in note_pair_costs:
                 note_pair_costs[note_pair] = []
             note_pair_costs[note_pair].append(cost)
-        
+
         return {
             'student_notes': student_notes,
             'teacher_notes': teacher_notes,
@@ -261,6 +324,156 @@ class DTWAnalyzer:
             'note_pair_costs': note_pair_costs
         }
     
+    def plot_sargam_segments(self, pair_id, save_dir="output/pitch_plots_segments_sargam"):
+        """
+        Plot student and teacher pitch contours with Sargam (swara) segments using raw Hz pitch.
+        """
+        import os
+        os.makedirs(save_dir, exist_ok=True)
+        if pair_id not in self.pitch_data:
+            print(f"Pair {pair_id} not found.")
+            return
+        data = self.pitch_data[pair_id]
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        # Student
+        s_sa_freq = librosa.note_to_hz(data['metadata']['s_scale'].split()[0])
+        s_times = data['student']['times']
+        s_raw_pitch = data['student'].get('raw_pitch_hz')
+        if s_raw_pitch is None:
+            s_file = f"audio_subset/student/{data['student']['file']}"
+            s_times, s_raw_pitch, _ = extract_and_normalize_pitch(s_file, normalization_method='raw')
+        plot_pitch_with_sargam_segments(
+            s_times,
+            s_raw_pitch,
+            s_sa_freq,
+            f"Student Pitch Contour (Sargam) - {data['student']['file']}",
+            'b',
+            ax1
+        )
+        # Teacher
+        t_sa_freq = librosa.note_to_hz(data['metadata']['t_scale'].split()[0])
+        t_times = data['teacher']['times']
+        t_raw_pitch = data['teacher'].get('raw_pitch_hz')
+        if t_raw_pitch is None:
+            t_file = f"audio_subset/teacher/{data['teacher']['file']}"
+            t_times, t_raw_pitch, _ = extract_and_normalize_pitch(t_file, normalization_method='raw')
+        plot_pitch_with_sargam_segments(
+            t_times,
+            t_raw_pitch,
+            t_sa_freq,
+            f"Teacher Pitch Contour (Sargam) - {data['teacher']['file']}",
+            'r',
+            ax2
+        )
+        ax2.set_xlabel('Time (s)')
+        plt.tight_layout()
+        save_path = os.path.join(save_dir, f"sargam_segments_{pair_id}.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Sargam segment plot saved to {save_path}")
+
+    def plot_normalized_sargam_segments(self, pair_id, save_dir="output/pitch_plots_segments_sargam_norm"):
+        """
+        Plot student and teacher normalized pitch contours with Sargam (swara) segments (segmentation by Hz).
+        """
+        import os
+        os.makedirs(save_dir, exist_ok=True)
+        if pair_id not in self.pitch_data:
+            print(f"Pair {pair_id} not found.")
+            return
+        data = self.pitch_data[pair_id]
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        # Student
+        s_sa_freq = librosa.note_to_hz(data['metadata']['s_scale'].split()[0])
+        s_times = data['student']['times']
+        s_norm_pitch = data['student']['pitch']
+        s_raw_pitch = data['student'].get('raw_pitch_hz')
+        if s_raw_pitch is None:
+            s_file = f"audio_subset/student/{data['student']['file']}"
+            s_times, s_raw_pitch, _ = extract_and_normalize_pitch(s_file, normalization_method='raw')
+        plot_normalized_pitch_with_sargam_segments(
+            s_times,
+            s_norm_pitch,
+            s_raw_pitch,
+            s_sa_freq,
+            f"Student Normalized Pitch (Sargam) - {data['student']['file']}",
+            'b',
+            ax1
+        )
+        # Teacher
+        t_sa_freq = librosa.note_to_hz(data['metadata']['t_scale'].split()[0])
+        t_times = data['teacher']['times']
+        t_norm_pitch = data['teacher']['pitch']
+        t_raw_pitch = data['teacher'].get('raw_pitch_hz')
+        if t_raw_pitch is None:
+            t_file = f"audio_subset/teacher/{data['teacher']['file']}"
+            t_times, t_raw_pitch, _ = extract_and_normalize_pitch(t_file, normalization_method='raw')
+        plot_normalized_pitch_with_sargam_segments(
+            t_times,
+            t_norm_pitch,
+            t_raw_pitch,
+            t_sa_freq,
+            f"Teacher Normalized Pitch (Sargam) - {data['teacher']['file']}",
+            'r',
+            ax2
+        )
+        ax2.set_xlabel('Time (s)')
+        plt.tight_layout()
+        save_path = os.path.join(save_dir, f"sargam_segments_normalized_{pair_id}.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Normalized Sargam segment plot saved to {save_path}")
+    
+    def plot_normalized_sargam_yaxis(self, pair_id, save_dir="output/pitch_plots_segments_sargam_yaxis"):
+        import os
+        os.makedirs(save_dir, exist_ok=True)
+        if pair_id not in self.pitch_data:
+            print(f"Pair {pair_id} not found.")
+            return
+        data = self.pitch_data[pair_id]
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        # Student
+        s_sa_freq = librosa.note_to_hz(data['metadata']['s_scale'].split()[0])
+        s_times = data['student']['times']
+        s_norm_pitch = data['student']['pitch']
+        s_raw_pitch = data['student'].get('raw_pitch_hz')
+        if s_raw_pitch is None:
+            s_file = f"audio_subset/student/{data['student']['file']}"
+            s_times, s_raw_pitch, _ = extract_and_normalize_pitch(s_file, normalization_method='raw')
+        plot_normalized_pitch_with_sargam_yaxis(
+            s_times,
+            s_norm_pitch,
+            s_raw_pitch,
+            s_sa_freq,
+            f"Student Normalized Pitch (Sargam Y-axis) - {data['student']['file']}",
+            'b',
+            ax1
+        )
+        # Teacher
+        t_sa_freq = librosa.note_to_hz(data['metadata']['t_scale'].split()[0])
+        t_times = data['teacher']['times']
+        t_norm_pitch = data['teacher']['pitch']
+        t_raw_pitch = data['teacher'].get('raw_pitch_hz')
+        if t_raw_pitch is None:
+            t_file = f"audio_subset/teacher/{data['teacher']['file']}"
+            t_times, t_raw_pitch, _ = extract_and_normalize_pitch(t_file, normalization_method='raw')
+        plot_normalized_pitch_with_sargam_yaxis(
+            t_times,
+            t_norm_pitch,
+            t_raw_pitch,
+            t_sa_freq,
+            f"Teacher Normalized Pitch (Sargam Y-axis) - {data['teacher']['file']}",
+            'r',
+            ax2
+        )
+        ax2.set_xlabel('Time (s)')
+        plt.tight_layout()
+        save_path = os.path.join(save_dir, f"sargam_yaxis_{pair_id}.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        print(f"Sargam y-axis plot saved to {save_path}")
+
+
     def aggregate_costs(self, note_pair_costs):
         """
         Aggregate costs using average and max methods
@@ -464,6 +677,18 @@ def main():
     results_df.to_csv('dtw_analysis_results.csv', index=False)
     print("Detailed results saved to 'dtw_analysis_results.csv'")
     
+    print("\nStep 7: Saving Sargam pitch segment plots...")
+    for pair_id in pitch_data.keys():
+        dtw_analyzer.plot_sargam_segments(pair_id)
+
+    print("\nStep 8: Saving Normalized Sargam pitch segment plots...")
+    for pair_id in pitch_data.keys():
+        dtw_analyzer.plot_normalized_sargam_segments(pair_id)
+
+    print("\nStep 9: Saving Normalized Sargam pitch segment plots (y-axis_renamed)...")
+    for pair_id in pitch_data.keys():
+        dtw_analyzer.plot_normalized_sargam_yaxis(pair_id)
+        
     return analysis_results
 
 if __name__ == "__main__":
