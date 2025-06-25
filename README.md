@@ -262,13 +262,14 @@ The DTW pipeline processes your metadata.csv and audio files to produce comprehe
 - Reads `metadata.csv` with student-teacher audio file pairs
 - Extracts pitch contours from WAV files using Parselmouth
 - Applies semitone normalization relative to each speaker's mean frequency
+- Trims the starting and ending silence of the student audio
 
 ### DTW Analysis Components
 1. **Cost Matrix Computation**: Uses log-scale distance function
 2. **Optimal Path Finding**: Dynamic programming algorithm
 3. **SARGAM Note Mapping**: Maps frequencies to Sa, Re, Ga, Ma, Pa, Dha, Ni
 4. **Duration Metrics**: Calculates student performance duration only
-5. **Cost Aggregation**: Both average and maximum methods for each note pair
+5. **Cost Aggregation**: The cost function parses the student audio through the teachers audio to adjust the students starting and ending point in order to minimize the cost
 
 ### Output Structure
 
@@ -447,5 +448,6 @@ def calculate_pitch_statistics(results):
    - Individual plots in `pitch_plots/` directory
    - Summary statistics in `pitch_data_extracted.csv`
    - Console output for processing progress
+   - Individual plots for the new DTW plots in `Optimized_DTW_Plots`
 
 This tutorial provides a comprehensive approach to pitch contour extraction and analysis using modern Python tools integrated with Praat's powerful acoustic analysis capabilities.
