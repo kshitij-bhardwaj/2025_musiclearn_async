@@ -271,6 +271,17 @@ The DTW pipeline processes your metadata.csv and audio files to produce comprehe
 3. **SARGAM Note Mapping**: Maps frequencies to Sa, Re, Ga, Ma, Pa, Dha, Ni
 4. **Duration Metrics**: Calculates student performance duration only
 5. **Cost Aggregation**: The cost function parses the student audio through the teachers audio to adjust the students starting and ending point in order to minimize the cost
+6. A sample plot for this DTW Analysis is shown below
+
+   ![dtw_cost_matrix_pair_0](https://github.com/user-attachments/assets/e4a1f823-b84b-40a7-a96b-f94d81e358cc)
+
+## Pitch Mistakes
+- Parses through the normalized student audio and finds mistakes above a certain threshold in the student audio
+- Plots a graph which visualises the student mistakes indicated by red dots and shows what the correct pitch should have been with black crosses with the dashed red lines representing the time and pitch error
+- A sample graph for such a student-teacher pair is given below
+
+ ![pitch_mistakes_pair_0](https://github.com/user-attachments/assets/c6fadb94-4d77-4501-8962-37fae77713d9)
+
 
 ### Output Structure
 

@@ -495,6 +495,73 @@ class DTWAnalyzer:
 
      return mistakes                
 
+    def plot_pitch_mistakes_with_teacher_comparison(self,pair_id, result, save_dir="mistake_plots", threshold=0.3):
+        """
+        Generate a plot comparing student and teacher pitch with mistake highlights and DTW alignment.
+    
+        Parameters:
+        - pair_id: ID string of the pair (e.g., "pair_0")
+        - result: dict returned by DTWAnalyzer.analyze_single_pair()
+        - save_dir: directory where plot image will be saved
+        - threshold: cost above which to flag a pitch mistake
+        """
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Extract data
+        path = result['optimal_path']
+        cost_matrix = result['cost_matrix']
+        student_pitch = result['note_correspondences']['student_notes']
+        teacher_pitch = result['note_correspondences']['teacher_notes']
+        student_times = result['note_correspondences']['student_duration']
+        student_times = result['note_correspondences']['student_notes']
+        teacher_times = result['note_correspondences']['teacher_notes']
+
+        # Get arrays again to retrieve time and pitch
+        student_times_arr = result['pair_id_data']['student']['times']
+        teacher_times_arr = result['pair_id_data']['teacher']['times']
+        student_pitch_arr = result['pair_id_data']['student']['pitch']
+        teacher_pitch_arr = result['pair_id_data']['teacher']['pitch']
+
+        plt.figure(figsize=(14, 7))
+
+        # Plot raw pitch contours
+        plt.plot(student_times_arr, student_pitch_arr, color='blue', label='Student Pitch')
+        plt.plot(teacher_times_arr, teacher_pitch_arr, color='green', label='Teacher Pitch')
+
+        # Plot all DTW alignment connections as light gray dotted lines
+        for (i, j) in path:
+            if i < len(student_times_arr) and j < len(teacher_times_arr):
+                plt.plot(
+                    [student_times_arr[i], teacher_times_arr[j]],
+                    [student_pitch_arr[i], teacher_pitch_arr[j]],
+                    color='gray', linestyle='dotted', linewidth=0.5, alpha=0.4
+                )
+
+        # Now plot mistakes as red dots (student) and black Xs (teacher)
+        for (i, j) in path:
+            if i >= len(student_times_arr) or j >= len(teacher_times_arr):
+                continue
+
+            cost = cost_matrix[i, j]
+            if cost > threshold:
+                plt.plot(student_times_arr[i], student_pitch_arr[i], 'ro', label='Student Mistake' if 'Student Mistake' not in plt.gca().get_legend_handles_labels()[1] else "")
+                plt.plot(teacher_times_arr[j], teacher_pitch_arr[j], 'kx', label='Expected Teacher Pitch' if 'Expected Teacher Pitch' not in plt.gca().get_legend_handles_labels()[1] else "")
+                plt.plot(
+                    [student_times_arr[i], teacher_times_arr[j]],
+                    [student_pitch_arr[i], teacher_pitch_arr[j]],
+                    'r--', linewidth=1, alpha=0.8
+                )
+
+        plt.xlabel("Time (s)")
+        plt.ylabel("Pitch (Normalized)")
+        plt.title(f"Pitch Mistakes Compared with Teacher - {pair_id}")
+        plt.legend()
+        plt.grid(True)
+
+        save_path = os.path.join(save_dir, f"pitch_mistakes_{pair_id}.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Saved mistake plot to: {save_path}")
+        plt.close()
 
 
 # Main execution function
@@ -528,26 +595,29 @@ def main():
     print("\nStep 4: Displaying results...")
     dtw_analyzer.print_summary_results(analysis_results)
     
-    # Step 5: Visualize cost matrix for first pair
-    # if analysis_results:
-    #     first_pair = list(analysis_results.keys())[0]
-    #     print(f"\nStep 5: Visualizing cost matrix for {first_pair}...")
-    #     dtw_analyzer.visualize_cost_matrix(
-    #         analysis_results[first_pair], 
-    #         save_path=f'dtw_cost_matrix_{first_pair}.png'
-    #     )
-
-    # Step 5: Visualize cost matrix for all pairs
+    
+    # Step 5: Visualize cost matrix for all pairs and save to 'plots/' directory
     print("\nStep 5: Visualizing cost matrices for all pairs...")
+
+    Create 'plots' directory if it doesn't exist
+    os.makedirs("new_dtw_plots", exist_ok=True)
+
     for pair_id, result in analysis_results.items():
-            print(f"  Generating cost matrix plot for {pair_id}...")
-            dtw_analyzer.visualize_cost_matrix(
-            result,
-            save_path=f'dtw_cost_matrix_{pair_id}.png'
+        print(f"  Generating cost matrix plot for {pair_id}...")
+        dtw_analyzer.visualize_cost_matrix(
+        result,
+        save_path=os.path.join("new_dtw_plots", f"dtw_cost_matrix_{pair_id}.png")
     )
+
+    Step 6: Visualize pitch mistakes
+    result['pair_id_data'] = dtw_analyzer.pitch_data[pair_id]
     
-    
-    # Step 6: Save detailed results to CSV
+    for pair_id, result in analysis_results.items():
+        result['pair_id_data'] = dtw_analyzer.pitch_data[pair_id]  # Attach original data
+        dtw_analyzer.plot_pitch_mistakes_with_teacher_comparison(pair_id, result)
+
+
+    # Step 7: Save detailed results to CSV
     print("\nStep 6: Saving detailed results...")
     detailed_results = []
     
