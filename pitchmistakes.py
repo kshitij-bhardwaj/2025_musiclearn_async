@@ -230,36 +230,36 @@ class DTWAnalyzer:
         
         return acc_cost, path
 
-#this section should is the replacement for the find_optimal_dtw_path method  
-def find_subsequence_dtw_path(self, cost_matrix):
-    """
-    Find DTW path where student sequence (x-axis) matches a subsequence of teacher (y-axis).
+     #this section should is the replacement for the find_optimal_dtw_path method  
+    def find_subsequence_dtw_path(self, cost_matrix):
+      """
+       Find DTW path where student sequence (x-axis) matches a subsequence of teacher (y-axis).
 
-    Returns:
-    - acc_cost: accumulated cost matrix
-    - best_path: optimal path (as list of (i, j))
-    - best_end_j: end index on teacher
-    """
-    n, m = cost_matrix.shape
-    acc_cost = np.full((n, m), np.inf)
-    acc_cost[0, :] = cost_matrix[0, :]  # Allow student to start anywhere on teacher
+     Returns:
+      - acc_cost: accumulated cost matrix
+      - best_path: optimal path (as list of (i, j))
+      - best_end_j: end index on teacher
+     """
+      n, m = cost_matrix.shape
+      acc_cost = np.full((n, m), np.inf)
+      acc_cost[0, :] = cost_matrix[0, :]  # Allow student to start anywhere on teacher
 
-    # Fill rest of matrix
-    for i in range(1, n):
+     # Fill rest of matrix
+      for i in range(1, n):
         for j in range(m):
             min_prev = np.inf
             if j > 0:
                 min_prev = min(acc_cost[i-1, j], acc_cost[i, j-1], acc_cost[i-1, j-1])
             acc_cost[i, j] = cost_matrix[i, j] + min_prev
 
-    # Find best ending point on teacher (anywhere along last student frame)
-    end_j = np.argmin(acc_cost[-1, :])
-    min_cost = acc_cost[-1, end_j]
+      # Find best ending point on teacher (anywhere along last student frame)
+      end_j = np.argmin(acc_cost[-1, :])
+      min_cost = acc_cost[-1, end_j]
 
-    # Backtrack from (n-1, end_j)
-    path = []
-    i, j = n-1, end_j
-    while i > 0:
+      # Backtrack from (n-1, end_j)
+      path = []
+      i, j = n-1, end_j
+      while i > 0:
         path.append((i, j))
         choices = []
         if j > 0:
@@ -275,10 +275,10 @@ def find_subsequence_dtw_path(self, cost_matrix):
             i -= 1
         else:
             j -= 1
-    path.append((0, j))
-    path.reverse()
+      path.append((0, j))
+      path.reverse()
 
-    return acc_cost, path
+      return acc_cost, path
 
     
     # This section is to be verified
@@ -462,6 +462,40 @@ def find_subsequence_dtw_path(self, cost_matrix):
             for note_pair, cost in sorted(max_costs.items()):
                 print(f"    {note_pair[0]}→{note_pair[1]}: {cost:.4f}")
 
+    def extract_pitch_mistakes(self, path, cost_matrix, student_times, student_notes, teacher_notes, threshold=0.3):
+     """
+      Identify pitch mistakes from the DTW path using a threshold on cost.
+
+      Parameters:
+     - path: list of (i, j) tuples (DTW alignment path)
+     - cost_matrix: computed DTW cost matrix
+     - student_times: time values for each student pitch frame
+     - student_notes: list of mapped student notes (e.g., ['Sa', 'Re', ...])
+     - teacher_notes: list of mapped teacher notes
+     - threshold: cost above which a pitch difference is considered a mistake
+
+     Returns:
+     - List of dictionaries with mistake information
+     """
+     mistakes = []
+
+     for (i, j) in path:
+        if i >= len(student_times):
+            continue
+
+        cost = cost_matrix[i, j]
+        if cost > threshold:
+            mistake = {
+                'time': student_times[i],
+                'cost': cost,
+                'student_note': student_notes[i] if i < len(student_notes) else 'Silence',
+                'teacher_note': teacher_notes[j] if j < len(teacher_notes) else 'Silence'
+            }
+            mistakes.append(mistake)
+
+     return mistakes                
+
+
 
 # Main execution function
 def main():
@@ -495,13 +529,23 @@ def main():
     dtw_analyzer.print_summary_results(analysis_results)
     
     # Step 5: Visualize cost matrix for first pair
-    if analysis_results:
-        first_pair = list(analysis_results.keys())[0]
-        print(f"\nStep 5: Visualizing cost matrix for {first_pair}...")
-        dtw_analyzer.visualize_cost_matrix(
-            analysis_results[first_pair], 
-            save_path=f'dtw_cost_matrix_{first_pair}.png'
-        )
+    # if analysis_results:
+    #     first_pair = list(analysis_results.keys())[0]
+    #     print(f"\nStep 5: Visualizing cost matrix for {first_pair}...")
+    #     dtw_analyzer.visualize_cost_matrix(
+    #         analysis_results[first_pair], 
+    #         save_path=f'dtw_cost_matrix_{first_pair}.png'
+    #     )
+
+    # Step 5: Visualize cost matrix for all pairs
+    print("\nStep 5: Visualizing cost matrices for all pairs...")
+    for pair_id, result in analysis_results.items():
+            print(f"  Generating cost matrix plot for {pair_id}...")
+            dtw_analyzer.visualize_cost_matrix(
+            result,
+            save_path=f'dtw_cost_matrix_{pair_id}.png'
+    )
+    
     
     # Step 6: Save detailed results to CSV
     print("\nStep 6: Saving detailed results...")
@@ -546,35 +590,3 @@ if __name__ == "__main__":
     results = main()
 
 
-def extract_pitch_mistakes(self, path, cost_matrix, student_times, student_notes, teacher_notes, threshold=0.3):
-    """
-    Identify pitch mistakes from the DTW path using a threshold on cost.
-
-    Parameters:
-    - path: list of (i, j) tuples (DTW alignment path)
-    - cost_matrix: computed DTW cost matrix
-    - student_times: time values for each student pitch frame
-    - student_notes: list of mapped student notes (e.g., ['Sa', 'Re', ...])
-    - teacher_notes: list of mapped teacher notes
-    - threshold: cost above which a pitch difference is considered a mistake
-
-    Returns:
-    - List of dictionaries with mistake information
-    """
-    mistakes = []
-
-    for (i, j) in path:
-        if i >= len(student_times):
-            continue
-
-        cost = cost_matrix[i, j]
-        if cost > threshold:
-            mistake = {
-                'time': student_times[i],
-                'cost': cost,
-                'student_note': student_notes[i] if i < len(student_notes) else 'Silence',
-                'teacher_note': teacher_notes[j] if j < len(teacher_notes) else 'Silence'
-            }
-            mistakes.append(mistake)
-
-    return mistakes    
