@@ -279,17 +279,13 @@ class DTWAnalyzer:
         
         return acc_cost, path
     
-    # This section is to be verified
     def map_to_scale_note(self, frequency, scale_str):
-        """
-        Map frequency to nearest note in the provided scale.
-        """
         if frequency <= 0:
             return 'Silence'
-        notes, boundaries = get_sargam_boundaries(scale_str)
-        note_hz = librosa.note_to_hz(notes)
-        idx = np.argmin(np.abs(note_hz - abs(frequency)))
-        return notes[idx]
+        sa_freq = librosa.note_to_hz(scale_str.split()[0])
+        notes, boundaries, _ = get_sargam_boundaries(sa_freq)
+        idx = np.digitize([frequency], boundaries)[0]
+        return notes[idx] if idx < len(notes) else notes[-1]
     
     def analyze_note_correspondences(self, pair_data, cost_matrix, path):
         """
@@ -601,6 +597,41 @@ class DTWAnalyzer:
                 print(f"    {note_pair[0]}→{note_pair[1]}: {cost:.4f}")
 
 
+def save_full_cost_aggregation_csv(all_results, pitch_data, filename="dtw_all_cost_aggregation.csv"):
+    import pandas as pd
+    rows = []
+    for pair_id, result in all_results.items():
+        metadata = pitch_data[pair_id]['metadata']
+        row = {
+            'pair_id': pair_id,
+            'student_file': metadata['s_file'],
+            'teacher_file': metadata['t_file'],
+            'total_dtw_cost': result['total_dtw_cost'],
+            'path_length': result['path_length'],
+            'student_duration': result['student_duration']
+        }
+        # Add all avg costs
+        for note_pair, cost in result['cost_aggregation']['average'].items():
+            row[f'avg_cost_{note_pair[0]}_to_{note_pair[1]}'] = cost
+        # Add all max costs
+        for note_pair, cost in result['cost_aggregation']['max'].items():
+            row[f'max_cost_{note_pair[0]}_to_{note_pair[1]}'] = cost
+
+        # Add perfect match costs
+        avg_costs = result['cost_aggregation']['average']
+        max_costs = result['cost_aggregation']['max']
+        perfect_matches = [(k, v) for k, v in avg_costs.items() if k[0] == k[1]]
+        if perfect_matches:
+            perfect_avg = np.mean([v for k, v in perfect_matches])
+            perfect_max = np.mean([max_costs[k] for k, v in perfect_matches if k in max_costs])
+            row['perfect_match_avg_cost'] = perfect_avg
+            row['perfect_match_max_cost'] = perfect_max
+
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    df.to_csv(filename, index=False)
+    print(f"✓ Full cost aggregation saved to '{filename}'")
+
 # Main execution function
 def main():
     """
@@ -646,9 +677,7 @@ def main():
     detailed_results = []
     
     for pair_id, result in analysis_results.items():
-        # Extract metadata from original pitch data
         metadata = dtw_analyzer.pitch_data[pair_id]['metadata']
-        
         row = {
             'pair_id': pair_id,
             'student_file': metadata['s_file'],
@@ -661,22 +690,32 @@ def main():
             'path_length': result['path_length'],
             'student_duration': result['student_duration']
         }
-        
         # Add average cost aggregation
         for note_pair, cost in result['cost_aggregation']['average'].items():
             row[f'avg_cost_{note_pair[0]}_to_{note_pair[1]}'] = cost
-            
         # Add max cost aggregation  
         for note_pair, cost in result['cost_aggregation']['max'].items():
             row[f'max_cost_{note_pair[0]}_to_{note_pair[1]}'] = cost
-            
+
+        # Add perfect match costs (Sa→Sa, Re→Re, etc.)
+        avg_costs = result['cost_aggregation']['average']
+        max_costs = result['cost_aggregation']['max']
+        perfect_matches = [(k, v) for k, v in avg_costs.items() if k[0] == k[1]]
+        if perfect_matches:
+            perfect_avg = np.mean([v for k, v in perfect_matches])
+            perfect_max = np.mean([max_costs[k] for k, v in perfect_matches if k in max_costs])
+            row['perfect_match_avg_cost'] = perfect_avg
+            row['perfect_match_max_cost'] = perfect_max
+
         detailed_results.append(row)
     
     # Save to CSV
     results_df = pd.DataFrame(detailed_results)
     results_df.to_csv('dtw_analysis_results.csv', index=False)
     print("Detailed results saved to 'dtw_analysis_results.csv'")
-    
+    # After analysis_results = dtw_analyzer.run_full_analysis()
+    save_full_cost_aggregation_csv(analysis_results, pitch_data, filename="dtw_all_cost_aggregation.csv")
+
     print("\nStep 7: Saving Sargam pitch segment plots...")
     for pair_id in pitch_data.keys():
         dtw_analyzer.plot_sargam_segments(pair_id)
@@ -689,6 +728,11 @@ def main():
     for pair_id in pitch_data.keys():
         dtw_analyzer.plot_normalized_sargam_yaxis(pair_id)
         
+    print("Number of pitch data pairs:", len(pitch_data))
+    print("Number of analysis results:", len(analysis_results))
+    for pair_id, result in analysis_results.items():
+        print(pair_id, "avg:", result['cost_aggregation']['average'])
+        print(pair_id, "max:", result['cost_aggregation']['max'])
     return analysis_results
 
 if __name__ == "__main__":

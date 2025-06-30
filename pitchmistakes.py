@@ -1,4 +1,3 @@
-
 # Complete DTW Pipeline using Direct Pitch Extraction
 import pandas as pd
 import numpy as np
@@ -137,11 +136,30 @@ def process_metadata_csv(metadata_file, normalization_method='semitones'):
     
     return results
 
-# SARGAM note mapping
-SARGAM_NOTES = {
-    'Sa': 261.63, 'Re': 293.66, 'Ga': 329.63, 
-    'Ma': 349.23, 'Pa': 392.00, 'Dha': 440.00, 'Ni': 493.88
-}
+import librosa
+
+def semitone_to_hz(semitone, tonic_hz):
+    """Convert semitone-normalized value back to Hz using the tonic."""
+    return tonic_hz * (2 ** (semitone / 12))
+
+def get_sargam_boundaries(sa_freq):
+    swaras = [
+        "Sa", "Komal Re", "Shuddh Re", "Komal Ga", "Shuddh Ga", "Ma", "Tivra Ma",
+        "Pa", "Komal Dha", "Shuddh Dha", "Komal Ni", "Shuddh Ni", "Sa (next)"
+    ]
+    offsets = np.arange(13)
+    swara_freqs = sa_freq * (2 ** (offsets / 12))
+    boundaries = [(swara_freqs[i] + swara_freqs[i+1]) / 2 for i in range(len(swara_freqs)-1)]
+    boundaries = [swara_freqs[0] - (boundaries[0] - swara_freqs[0])] + boundaries + [swara_freqs[-1] + (swara_freqs[-1] - boundaries[-1])]
+    return swaras, boundaries, swara_freqs
+
+def map_to_sargam(frequency, sa_freq):
+    """Map frequency (Hz) to nearest Sargam note using tonic."""
+    if frequency <= 0:
+        return 'Silence'
+    swaras, boundaries, _ = get_sargam_boundaries(sa_freq)
+    idx = np.digitize([frequency], boundaries)[0]
+    return swaras[idx] if idx < len(swaras) else swaras[-1]
 
 class DTWAnalyzer:
     def __init__(self, pitch_data):
@@ -282,51 +300,47 @@ class DTWAnalyzer:
 
     
     # This section is to be verified
-    def map_to_sargam(self, frequency):
+    def map_to_sargam(frequency, sa_freq):
         """
-        Map frequency to nearest SARGAM note
+        Map frequency (Hz) to nearest Sargam note using the given tonic (Sa frequency).
         """
         if frequency <= 0:
             return 'Silence'
-            
-        # Convert back to Hz if using semitones (approximate)
-        if abs(frequency) < 50:  # Likely semitone representation
-            # This is a rough approximation - you may need to adjust based on your normalization
-            freq_hz = 220 * (2 ** (frequency / 12))  # Using A3 as reference
-        else:
-            freq_hz = abs(frequency)
-        
-        distances = {note: abs(freq_hz - freq) for note, freq in SARGAM_NOTES.items()}
-        return min(distances, key=distances.get)
+        swaras, boundaries, _ = get_sargam_boundaries(sa_freq)
+        idx = np.digitize([frequency], boundaries)[0]
+        return swaras[idx] if idx < len(swaras) else swaras[-1]
     
     def analyze_note_correspondences(self, pair_data, cost_matrix, path):
-        """
-        Analyze note correspondences and calculate durations
-        """
         student_pitch = pair_data['student']['pitch']
         teacher_pitch = pair_data['teacher']['pitch']
         student_times = pair_data['student']['times']
-        
-        # Map frequencies to SARGAM notes
-        student_notes = [self.map_to_sargam(f) for f in student_pitch]
-        teacher_notes = [self.map_to_sargam(f) for f in teacher_pitch]
-        
-        # Calculate student duration (as requested)
+        s_scale = pair_data['metadata']['s_scale']
+        t_scale = pair_data['metadata']['t_scale']
+
+        # Get tonic frequencies
+        s_sa_freq = librosa.note_to_hz(s_scale.split()[0])
+        t_sa_freq = librosa.note_to_hz(t_scale.split()[0])
+
+        # Convert semitone-normalized pitch back to Hz
+        student_pitch_hz = [semitone_to_hz(st, s_sa_freq) for st in student_pitch]
+        teacher_pitch_hz = [semitone_to_hz(tt, t_sa_freq) for tt in teacher_pitch]
+
+        # Map to Sargam using the correct tonic
+        student_notes = [map_to_sargam(f, s_sa_freq) for f in student_pitch_hz]
+        teacher_notes = [map_to_sargam(f, t_sa_freq) for f in teacher_pitch_hz]
+
         student_duration = student_times[-1] - student_times[0] if len(student_times) > 1 else 0
-        
-        # Collect note pair costs along optimal path
+
         note_pair_costs = {}
-        
         for i, j in path:
             s_note = student_notes[i] if i < len(student_notes) else 'Silence'
             t_note = teacher_notes[j] if j < len(teacher_notes) else 'Silence'
             note_pair = (s_note, t_note)
             cost = cost_matrix[i, j]
-            
             if note_pair not in note_pair_costs:
                 note_pair_costs[note_pair] = []
             note_pair_costs[note_pair].append(cost)
-        
+
         return {
             'student_notes': student_notes,
             'teacher_notes': teacher_notes,
@@ -599,7 +613,7 @@ def main():
     # Step 5: Visualize cost matrix for all pairs and save to 'plots/' directory
     print("\nStep 5: Visualizing cost matrices for all pairs...")
 
-    Create 'plots' directory if it doesn't exist
+    #Create 'plots' directory if it doesn't exist
     os.makedirs("new_dtw_plots", exist_ok=True)
 
     for pair_id, result in analysis_results.items():
@@ -609,7 +623,7 @@ def main():
         save_path=os.path.join("new_dtw_plots", f"dtw_cost_matrix_{pair_id}.png")
     )
 
-    Step 6: Visualize pitch mistakes
+    #Step 6: Visualize pitch mistakes
     result['pair_id_data'] = dtw_analyzer.pitch_data[pair_id]
     
     for pair_id, result in analysis_results.items():
