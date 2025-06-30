@@ -234,49 +234,87 @@ class DTWAnalyzer:
         
         # Initialize accumulated cost matrix
         acc_cost = np.zeros((n, m))
-        acc_cost[0, 0] = cost_matrix[0, 0]
+        acc_cost[0, :] = cost_matrix[0, :]
         
         # Fill first row and column
-        for i in range(1, n):
-            acc_cost[i, 0] = acc_cost[i-1, 0] + cost_matrix[i, 0]
-        for j in range(1, m):
-            acc_cost[0, j] = acc_cost[0, j-1] + cost_matrix[0, j]
+        # for i in range(1, n):
+        #     acc_cost[i, 0] = acc_cost[i-1, 0] + cost_matrix[i, 0]
+        # for j in range(1, m):
+        #     acc_cost[0, j] = acc_cost[0, j-1] + cost_matrix[0, j]
         
-        # Fill the rest of the matrix
+        # # Fill the rest of the matrix
+        # for i in range(1, n):
+        #     for j in range(1, m):
+        #         acc_cost[i, j] = cost_matrix[i, j] + min(
+        #             acc_cost[i-1, j],      # Insertion
+        #             acc_cost[i, j-1],      # Deletion  
+        #             acc_cost[i-1, j-1]     # Match
+        #         )
         for i in range(1, n):
-            for j in range(1, m):
-                acc_cost[i, j] = cost_matrix[i, j] + min(
-                    acc_cost[i-1, j],      # Insertion
-                    acc_cost[i, j-1],      # Deletion  
-                    acc_cost[i-1, j-1]     # Match
-                )
+            for j in range(m):
+                min_prev = np.inf
+                if j > 0:
+                    min_prev = min(
+                        acc_cost[i-1, j-1],    # Match
+                        acc_cost[i-1, j],      # Insertion  
+                        acc_cost[i, j-1]       # Deletion
+                    )
+                else:
+                    min_prev = acc_cost[i-1, j]  # Only insertion allowed at j=0
+                acc_cost[i, j] = cost_matrix[i, j] + min_prev
+
+    # Find best ending point on teacher
+        end_j = np.argmin(acc_cost[-1, :])
         
         # Backtrack to find optimal path
-        path = []
-        i, j = n-1, m-1
+        # path = []
+        # i, j = n-1, m-1
         
-        while i > 0 or j > 0:
-            path.append((i, j))
+        # while i > 0 or j > 0:
+        #     path.append((i, j))
             
-            if i == 0:
-                j -= 1
-            elif j == 0:
-                i -= 1
-            else:
-                # Choose the direction with minimum cost
-                min_cost = min(acc_cost[i-1, j], acc_cost[i, j-1], acc_cost[i-1, j-1])
+        #     if i == 0:
+        #         j -= 1
+        #     elif j == 0:
+        #         i -= 1
+        #     else:
+        #         # Choose the direction with minimum cost
+        #         min_cost = min(acc_cost[i-1, j], acc_cost[i, j-1], acc_cost[i-1, j-1])
                 
-                if acc_cost[i-1, j-1] == min_cost:
-                    i -= 1
-                    j -= 1
-                elif acc_cost[i-1, j] == min_cost:
-                    i -= 1
-                else:
-                    j -= 1
+        #         if acc_cost[i-1, j-1] == min_cost:
+        #             i -= 1
+        #             j -= 1
+        #         elif acc_cost[i-1, j] == min_cost:
+        #             i -= 1
+        #         else:
+        #             j -= 1
         
-        path.append((0, 0))
+        # path.append((0, 0))
+        # path.reverse()
+        
+        # return acc_cost, path
+        path = []
+        i, j = n-1, end_j
+        while i > 0:
+            path.append((i, j))
+            choices = []
+            if j > 0:
+                choices = [acc_cost[i-1, j-1], acc_cost[i-1, j], acc_cost[i, j-1]]
+            else:
+                choices = [np.inf, acc_cost[i-1, j], np.inf]
+
+            move = np.argmin(choices)
+            if move == 0:      # Match
+                i -= 1
+                j -= 1
+            elif move == 1:    # Insertion
+                i -= 1
+            else:              # Deletion
+                j -= 1
+    
+        path.append((0, j))
         path.reverse()
-        
+
         return acc_cost, path
     
     def map_to_scale_note(self, frequency, scale_str):

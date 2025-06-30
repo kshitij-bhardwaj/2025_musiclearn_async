@@ -491,23 +491,32 @@ class DTWAnalyzer:
      Returns:
      - List of dictionaries with mistake information
      """
+    # Calculate costs for all path points
+     all_costs = [cost_matrix[i, j] for (i, j) in path if i < len(student_times)]
+    
+     if not all_costs:
+        return []
+    
+    # Use percentile-based threshold (only top 10% as mistakes)
+     percentile_threshold = np.percentile(all_costs, 90)
+     effective_threshold = max(threshold, percentile_threshold)
+    
      mistakes = []
-
      for (i, j) in path:
-        if i >= len(student_times):
-            continue
+         if i >= len(student_times):
+             continue
 
-        cost = cost_matrix[i, j]
-        if cost > threshold:
-            mistake = {
-                'time': student_times[i],
-                'cost': cost,
-                'student_note': student_notes[i] if i < len(student_notes) else 'Silence',
-                'teacher_note': teacher_notes[j] if j < len(teacher_notes) else 'Silence'
-            }
-            mistakes.append(mistake)
+         cost = cost_matrix[i, j]
+         if cost > effective_threshold:
+             mistake = {
+                 'time': student_times[i],
+                 'cost': cost,
+                 'student_note': student_notes[i] if i < len(student_notes) else 'Silence',
+                 'teacher_note': teacher_notes[j] if j < len(teacher_notes) else 'Silence'
+             }
+             mistakes.append(mistake)
 
-     return mistakes                
+     return mistakes           
 
     def plot_pitch_mistakes_with_teacher_comparison(self,pair_id, result, save_dir="mistake_plots", threshold=0.3):
         """
