@@ -618,7 +618,7 @@ def main():
             'student_scale', 'teacher_scale', 'total_dtw_cost', 'path_length', 'student_duration']
     filtered_df = df[id_cols + note_cost_cols]
 
-    threshold = 0.02
+    threshold = 0.5
     classified_df = filtered_df.copy()
     for col in note_cost_cols:
         classified_df[col] = classified_df[col].apply(lambda x: "1" if pd.notna(x) and x > threshold else ("0" if pd.notna(x) else None))
