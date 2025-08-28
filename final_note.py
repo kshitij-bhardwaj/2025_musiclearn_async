@@ -143,16 +143,25 @@ def get_sargam_boundaries(sa_freq):
     """
     Given the tonic frequency (Sa), return swara names and frequency boundaries for one octave.
     """
+    #print("Sa_Frequency is:",sa_freq,"\n\n")
+
+
     swaras = [
-        "Sa", "Komal Re", "Shuddh Re", "Komal Ga", "Shuddh Ga", "Ma", "Tivra Ma",
-        "Pa", "Komal Dha", "Shuddh Dha", "Komal Ni", "Shuddh Ni", "Sa (next)"
+        "Sa","Re","Ga", "Ma",
+        "Pa","Dha","Ni"
     ]
-    # Semitone offsets for each swara
-    offsets = np.arange(13)
+
+    ratios = {
+        'Sa': 1.0, 'Re': 9/8, 'Ga': 5/4, 'Ma': 4/3,
+        'Pa': 3/2, 'Dha': 5/3, 'Ni': 15/8
+    }
+
     # Calculate frequencies for each swara
-    swara_freqs = sa_freq * (2 ** (offsets / 12))
+    swara_freqs = np.array([ratios[s]*sa_freq for s in swaras])
+    #print("Swara_Frequencies are:",swara_freqs,"\n\n")
     # Boundaries: midpoints between swaras
     boundaries = [(swara_freqs[i] + swara_freqs[i+1]) / 2 for i in range(len(swara_freqs)-1)]
+    #print("Boundaries are:",boundaries,"\n\n")
     # Add min/max for outer boundaries
     boundaries = [swara_freqs[0] - (boundaries[0] - swara_freqs[0])] + boundaries + [swara_freqs[-1] + (swara_freqs[-1] - boundaries[-1])]
     return swaras, boundaries, swara_freqs
@@ -192,13 +201,18 @@ class DTWAnalyzer:
         Compute DTW cost matrix using log-scale distance
         """
         n, m = len(student_pitch), len(teacher_pitch)
+        #print(n,m,"\n\n")
         cost_matrix = np.zeros((n, m))
         
+        print("Student Pitch is:",student_pitch,"\n\n")
+        print("Teacher Pitch is:",teacher_pitch,"\n\n") 
+
         # Fill cost matrix with log-scale distances
         for i in range(n):
             for j in range(m):
                 cost_matrix[i, j] = self.log_distance(student_pitch[i], teacher_pitch[j])
         
+        #print("Cost Matrix is:",cost_matrix,"\n\n")
         return cost_matrix
     
     def find_optimal_dtw_path(self, cost_matrix):
@@ -280,7 +294,7 @@ class DTWAnalyzer:
             return 'Unknown'
     
         # get swara names and frequencies
-        swaras, boundaries, swara_freqs = get_sargam_boundaries(tonic_hz)
+        swaras,boundaries, swara_freqs = get_sargam_boundaries(tonic_hz)
     
         # choose closest swara by frequency
         idx = int(np.argmin(np.abs(swara_freqs - abs(fval))))
@@ -290,20 +304,30 @@ class DTWAnalyzer:
     def analyze_note_correspondences(self, pair_data, cost_matrix, path):
         # Use raw voiced Hz for mapping to sargam boundaries (not normalized semitones)
         student_times = pair_data['student']['times']
+        teacher_times = pair_data['teacher']['times']
         student_raw = pair_data['student'].get('raw_pitch', np.array([]))
         teacher_raw = pair_data['teacher'].get('raw_pitch', np.array([]))
         s_scale = pair_data['metadata']['s_scale']
         t_scale = pair_data['metadata']['t_scale']
-
+        #print(teacher_raw,"\n\n")
+        #print(student_raw,"\n\n")
         # Map raw frequencies to swaras (silence for non-finite or <=0)
         student_notes = [self.map_to_scale_note(f, s_scale) for f in student_raw]
         teacher_notes = [self.map_to_scale_note(f, t_scale) for f in teacher_raw]
+        #print("Student Notes are:",student_notes,"\n\n")
+        #print("Teacher Notes are:",teacher_notes,"\n\n")
+
 
         student_duration = student_times[-1] - student_times[0] if len(student_times) > 1 else 0
-
+        print("Student Duration is:",student_duration,"\n\n")
+        unique_note_order = []
         # initialize note_pair_costs for same-note pairs
-        unique_notes = set(student_notes) | set(teacher_notes)
-        note_pair_costs = { (n, n): [] for n in unique_notes if n not in ["Silence", "Unknown"] }
+        for i in range(len(teacher_notes)-1):
+            if (teacher_notes[i] != teacher_notes[i+1] ):
+                unique_note_order.append(teacher_notes[i])
+        #unique_notes = set(teacher_notes)
+        note_pair_costs = { (n, n): [] for n in unique_note_order if n not in ["Silence", "Unknown"] }
+        #print(unique_note_order,"\n\n")
 
         # Traverse DTW path (indices refer to normalized arrays lengths -> which match raw voiced lengths)
         for i, j in path:
@@ -312,6 +336,11 @@ class DTWAnalyzer:
             cost = cost_matrix[i, j]
             if s_note == t_note and (s_note, t_note) in note_pair_costs:
                 note_pair_costs[(s_note, t_note)].append(cost)
+
+            #     print({'student_notes': student_notes,
+            # 'teacher_notes': teacher_notes,
+            # 'student_duration': student_duration,
+            # 'note_pair_costs': note_pair_costs})
 
         return {
             'student_notes': student_notes,
@@ -347,6 +376,7 @@ class DTWAnalyzer:
             raise ValueError(f"Pair {pair_id} not found in data")
         
         pair_data = self.pitch_data[pair_id]
+        #print("Pair Data is:",pair_data,"\n\n")
         
         # Get pitch contours
         student_pitch = pair_data['student']['pitch']
@@ -402,7 +432,7 @@ class DTWAnalyzer:
 """
 Note detection and segmentation and saving it to RESULTS.csv
 This part is seperate from the mistake detection part above
-Integrating these parts together is left as an exercise to the reader.
+These parts have been integrated on a temporary basis for ease of use but better modularity is needed
 """   
 # Constants for A3 scale (Sa at 220Hz)
 SA_FREQ = 220.0
@@ -612,13 +642,16 @@ def main():
     print("\nStep 7: Classifying performances based on DTW cost threshold...")
     df = pd.read_csv('dtw_final.csv')
 
-    note_cost_cols = [col for col in df.columns if "_to_" in col and col.split("_to_")[0].split()[-1] == col.split("_to_")[1].split()[-1]]
+    note_cost_cols = [
+    c for c in df.columns
+    if "_to_" in c and c.split("_to_")[0].strip() == c.split("_to_")[1].strip()
+]
 
     id_cols = ['pair_id', 'student_file', 'teacher_file', 'student_bpm', 'teacher_bpm',
             'student_scale', 'teacher_scale', 'total_dtw_cost', 'path_length', 'student_duration']
     filtered_df = df[id_cols + note_cost_cols]
 
-    threshold = 0.5
+    threshold = 0.99
     classified_df = filtered_df.copy()
     for col in note_cost_cols:
         classified_df[col] = classified_df[col].apply(lambda x: "1" if pd.notna(x) and x > threshold else ("0" if pd.notna(x) else None))
@@ -630,6 +663,19 @@ def main():
     
         
     return analysis_results
+
+def _base_swara(name: str) -> str:
+    """
+    Map 'Komal Re'/'Shuddh Re'/'Re' -> 'Re', 'Sa (next)' -> 'Sa', keep 'Sa', 'Ma', etc.
+    """
+    if not isinstance(name, str):
+        return name
+    n = name.strip()
+    if n.startswith("Sa"):
+        return "Sa"
+    parts = n.replace("(", " ").replace(")", " ").split()
+    return parts[-1] if parts else n
+
  
 def replace_mistakes_with_durations(dtw_path='dtw_final.csv', results_path='RESULTS.csv', out_path='dtw_final_with_times.csv'):
     """
@@ -642,11 +688,10 @@ def replace_mistakes_with_durations(dtw_path='dtw_final.csv', results_path='RESU
 
     res_df = pd.read_csv(results_path, dtype=str)
     res_df['student_file'] = res_df['student_file'].astype(str).str.strip()
-    res_df['note'] = res_df['note'].astype(str).str.strip()
+    res_df['note'] = res_df['note'].astype(str).str.strip().map(_base_swara)
     res_df['time_duration'] = res_df['time_duration'].astype(str).str.strip()
-
-    # mapping: (student_file, note) -> list of time_duration strings (preserve order)
     mapping = res_df.groupby(['student_file', 'note'])['time_duration'].apply(list).to_dict()
+
 
     # detect note comparison columns
     note_cols = [c for c in dtw_df.columns if '_to_' in c]
