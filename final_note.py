@@ -4,6 +4,7 @@ import numpy as np
 import parselmouth
 import librosa
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 
 def _safe_to_float_array(x):
@@ -37,7 +38,7 @@ def extract_and_normalize_pitch(audio_file, pitch_floor=50, pitch_ceiling=800, n
     """
     # Load sound and extract pitch
     sound = parselmouth.Sound(audio_file)
-    pitch = sound.to_pitch(pitch_floor=pitch_floor, pitch_ceiling=pitch_ceiling)
+    pitch = sound.to_pitch(time_step = 0.015,pitch_floor=pitch_floor, pitch_ceiling=pitch_ceiling)
 
     # Get raw pitch values and time points
     time_points = np.asarray(pitch.xs(), dtype=float)
@@ -204,8 +205,8 @@ class DTWAnalyzer:
         #print(n,m,"\n\n")
         cost_matrix = np.zeros((n, m))
         
-        print("Student Pitch is:",student_pitch,"\n\n")
-        print("Teacher Pitch is:",teacher_pitch,"\n\n") 
+        #print("Student Pitch is:",student_pitch,"\n\n")
+        #print("Teacher Pitch is:",teacher_pitch,"\n\n") 
 
         # Fill cost matrix with log-scale distances
         for i in range(n):
@@ -213,6 +214,9 @@ class DTWAnalyzer:
                 cost_matrix[i, j] = self.log_distance(student_pitch[i], teacher_pitch[j])
         
         #print("Cost Matrix is:",cost_matrix,"\n\n")
+        # plt.figsize(8, 6)
+        # plt.imshow(cost_matrix, origin='lower', cmap='viridis', aspect='auto')
+        # plt.show()
         return cost_matrix
     
     def find_optimal_dtw_path(self, cost_matrix):
@@ -265,6 +269,18 @@ class DTWAnalyzer:
         
         path.append((0, 0))
         path.reverse()
+        #print("The path is-",path,"\n\n")
+        x_vals = [p[0] for p in path]
+        y_vals = [p[1] for p in path]
+
+        # Plot
+        plt.figure(figsize=(12, 6))
+        plt.plot(x_vals, y_vals, marker=".", linestyle="-", color="b")
+        plt.xlabel("X values")
+        plt.ylabel("Y values")
+        plt.title("Plot of Given Points")
+        plt.grid(True)
+        plt.show()
         
         return acc_cost, path
     
