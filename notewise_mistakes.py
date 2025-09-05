@@ -1,10 +1,11 @@
 import librosa
 import numpy as np
 import pandas as pd
-import crepe
-from collections import Counter
 import matplotlib.pyplot as plt
-from collections import defaultdict
+import pyaudio as pa
+import wave
+import sounddevice as sd
+import soundfile as sf
 
 
 #DTW implementation
@@ -28,21 +29,13 @@ def compute_dtw_cost_matrix(student_pitch, teacher_pitch):
         Compute DTW cost matrix using log-scale distance
         """
         n, m = len(student_pitch), len(teacher_pitch)
-        #print(n,m,"\n\n")
         cost_matrix = np.zeros((n, m))
         
-        #print("Student Pitch is:",student_pitch,"\n\n")
-        #print("Teacher Pitch is:",teacher_pitch,"\n\n") 
-
         # Fill cost matrix with log-scale distances
         for i in range(n):
             for j in range(m):
                 cost_matrix[i, j] = log_distance(student_pitch[i], teacher_pitch[j])
         
-        #print("Cost Matrix is:",cost_matrix,"\n\n")
-        # plt.figsize(8, 6)
-        # plt.imshow(cost_matrix, origin='lower', cmap='viridis', aspect='auto')
-        # plt.show()
         return cost_matrix
     
 def find_optimal_dtw_path(cost_matrix):
@@ -95,126 +88,290 @@ def find_optimal_dtw_path(cost_matrix):
         
         path.append((0, 0))
         path.reverse()
-        #print("The path is-",path,"\n\n")
-        # x_vals = [p[0] for p in path]
-        # y_vals = [p[1] for p in path]
-
-        # #Plot
-        # plt.figure(figsize=(12, 6))
-        # plt.plot(x_vals, y_vals, marker=".", linestyle="-", color="b")
-        # plt.xlabel("X values")
-        # plt.ylabel("Y values")
-        # plt.title("Plot of Given Points")
-        # plt.grid(True)
-        # plt.show()
+        
         
         return acc_cost, path
 
+def get_sargam_boundaries(sa_freq):
+    """
+    Given the tonic frequency (Sa), return swara names and frequency boundaries for one octave.
+    """
+  
+    swaras = [
+        "Sa","Re","Ga", "Ma",
+        "Pa","Dha","Ni"
+    ]
 
-#Audio preprocessing and pitch extraction
+    ratios = {
+        'Sa': 1.0, 'Re': 9/8, 'Ga': 5/4, 'Ma': 4/3,
+        'Pa': 3/2, 'Dha': 5/3, 'Ni': 15/8
+    }
 
-teacher_audio_path = "C:/Users/abhin/OneDrive/Pictures/JAVASCRIPT/BCI_Challenge/Groove/audio_subset/teacher/20220330101307.wav"
-student_audio_path = "C:/Users/abhin/OneDrive/Pictures/JAVASCRIPT/BCI_Challenge/Groove/audio_subset/student/20220425105156.wav"
-
-teacher_audio, sr = librosa.load(teacher_audio_path, sr=44100)
-student_audio, sr = librosa.load(student_audio_path, sr=44100)
-
-#print(len(teacher_audio),len(student_audio),"\n\n")
-
-teacher_trimmed, index = librosa.effects.trim(teacher_audio ,top_db=20, frame_length = 2048,hop_length=512)
-student_trimmed, index = librosa.effects.trim(student_audio ,top_db=20, frame_length = 2048,hop_length=512)  
-
-#print(len(teacher_trimmed),len(student_trimmed),"\n\n")
-
-teacher_freq = librosa.yin(teacher_trimmed,fmin=75,fmax=600)
-student_freq = librosa.yin(student_trimmed,fmin=75,fmax=600)
-
-#print(len(teacher_freq),len(student_freq),"\n\n")
-
-# Convert frequencies to notes using Sa as 220 Hz for teacher and 207 Hz for student
-# Sa is chosen as 220 Hz (A3) for teacher and 207 Hz (G#3) for student to account for pitch differences
-teacher_notes = librosa.hz_to_svara_h(teacher_freq, Sa=220.0, abbr = False)
-student_notes = librosa.hz_to_svara_h(student_freq, Sa=207.0, abbr = False)
-
-# print(len(teacher_freq),len(student_freq),"\n")
-# print(len(teacher_notes),len(student_notes))
-
-# Compute DTW cost matrix
-cost_matrix = compute_dtw_cost_matrix(student_freq, teacher_freq)
-# Find optimal DTW path
-acc_cost, path = find_optimal_dtw_path(cost_matrix)
-
-#print(path)
-
-# Segment teacher notes into continuous segments and store their start and end indices along with the note
-teacher_notes_duration = []
-start_idx = 0
-end_idx = 0
-print(len(teacher_notes))
-for i in range(len(teacher_notes)-1):
-     if teacher_notes[i] == teacher_notes[i+1]:
-          end_idx = i+1
-     else:
-          duration = end_idx - start_idx + 1
-          teacher_notes_duration.append((teacher_notes[i], start_idx , end_idx))
-          start_idx = i+1
-          end_idx = i+1    
-
-teacher_notes_duration.append((teacher_notes[-1], start_idx , len(teacher_notes)-1))
-
-# for note,start_idx,end_idx in teacher_notes_duration:
-#      print(f"Note: {note}, Start_idx: {start_idx}, End_idx: {end_idx}")  
-
-# Note wise mistake analysis for student audio based on DTW path and cost matrix and mean frequency difference
-student_mistakes = []
-
-for i in range(len(teacher_notes_duration)):
-     student = []
-     teacher = []
-     cost = 0
-     for j in range(teacher_notes_duration[i][1],teacher_notes_duration[i][2]+1):
-          teacher.append(teacher_freq[j])
-          for k in range(len(path)):
-               if path[k][1] == j:
-                    # print("The path is-",path[k],"\n\n")
-                    student.append(path[k][0]) 
-                    cost += cost_matrix[path[k][0]][path[k][1]]   
-     student_mean = np.mean(student_freq[student])
-     teacher_mean = np.mean(teacher)
-     mean_diff = abs(student_mean - teacher_mean)
-     
-     if cost*mean_diff > 5:
-        #print(cost*mean_diff,"\n\n")
-        student_mistakes.append((student[0],student[-1]))
-
-student_mistakes = list(dict.fromkeys(student_mistakes))
-
-student_mistakes_duration = []
-
-for (i,j) in student_mistakes:
-     student_mistakes_duration.append((round(i*0.011,2), round((j+1)*0.011,2)))
-
-print(student_mistakes_duration,"\n\n")
-
-print("Student mistakes at indices:",student_mistakes)
-
-df = pd.DataFrame(student_mistakes_duration, columns=['Start Time (s)', 'End Time (s)'])
-df.to_csv('RESULTS.csv', index=False)
-
-
-# New idea for mapping notes to indices and retrieving indices for a specific note 
-def solve(v, w, s):
-    m = defaultdict(list)   # string -> list of ints
-
-    for pair in v:
-        if len(pair) < 2:   # safety check
-            continue
-        idx = pair[1]
-        if 0 <= idx < len(w):   # ensure index is valid
-            m[w[idx]].append(pair[0])
-
-    return m.get(s, [])  # return list if exists, else empty
+    # Calculate frequencies for each swara
+    swara_freqs = np.array([ratios[s]*sa_freq for s in swaras])
+   
+    # Boundaries: midpoints between swaras
+    boundaries = [(swara_freqs[i] + swara_freqs[i+1]) / 2 for i in range(len(swara_freqs)-1)]
     
-          
-array = solve(path, teacher_notes, 'Sa')
+    # Add min/max for outer boundaries
+    boundaries = [swara_freqs[0] - (boundaries[0] - swara_freqs[0])] + boundaries + [swara_freqs[-1] + (swara_freqs[-1] - boundaries[-1])]
+    return boundaries
 
+
+def set_tonic_frequency(filename,chunk,channels,sample_format,fs):
+    
+    p = pa.PyAudio()
+
+    ans = input("Do you want to set tonic frequency? (y/n): ")
+
+    if ans.lower() == 'y':
+        print("Set your tonic frequency (Sa)")
+
+        stream = p.open(format=sample_format,
+                        channels=channels,
+                        rate=fs,
+                        frames_per_buffer=chunk,
+                        input=True,)
+
+        frames = []
+
+        for i in range(0, int(fs / chunk * 3)):
+            data = stream.read(chunk)
+            frames.append(data)
+
+        stream.stop_stream()
+        stream.close()
+
+
+        print('Finished recording tonic frequency')
+
+        wf = wave.open(filename, 'wb')
+        wf.setnchannels(channels)   
+        wf.setsampwidth(p.get_sample_size(sample_format))
+        wf.setframerate(fs)
+        wf.writeframes(b''.join(frames))
+        wf.close()
+
+
+        data,fs = sf.read(filename,dtype='float32')
+        sd.play(data,fs)
+        status = sd.wait()  # Wait until file is done playing
+
+        tonic_audio = librosa.load(filename,sr=44100)
+        tonic_freqencies = librosa.yin(tonic_audio[0],fmin=75,fmax=600)
+        tonic_freq = np.median(tonic_freqencies)
+
+    else:
+        tonic_freq = 207.65
+
+    print("Tonic frequency is set to:",tonic_freq)
+
+    return tonic_freq
+
+
+def play_teacher_audio(teacher_audio_path):
+    
+    input("Press Enter when you are ready to play the teacher audio ")
+
+    print("Now playing the teacher audio")
+
+    data,fs = sf.read(teacher_audio_path,dtype='float32')
+    sd.play(data,fs)
+    status = sd.wait()  # Wait until file is done playing
+
+    print("Teacher audio finished playing")
+
+def start_recording(filename,channels,sample_format,fs,chunk,seconds):
+    
+    input("Press Enter when you are ready to record your audio ")
+
+    print("Now record your audio")
+
+    print('Recording')
+
+    p = pa.PyAudio()
+
+    stream = p.open(format=sample_format,
+                    channels=channels,
+                    rate=fs,
+                    frames_per_buffer=chunk,
+                    input=True)
+
+    frames = []
+
+    for i in range(0, int(fs / chunk * seconds)):
+        data = stream.read(chunk)
+        frames.append(data)
+
+    stream.stop_stream()
+    stream.close() 
+    p.terminate()
+
+    print('Finished recording')
+
+    wf = wave.open(filename, 'wb')
+    wf.setnchannels(channels)   
+    wf.setsampwidth(p.get_sample_size(sample_format))
+    wf.setframerate(fs)
+    wf.writeframes(b''.join(frames))
+    wf.close()
+    
+
+def play_recorded_audio(filename):
+    
+    input("Press Enter when you are ready to play your recorded audio ")
+    print("Now playing your recorded audio")
+    data,fs = sf.read(filename,dtype='float32')
+    sd.play(data,fs)
+    status = sd.wait()  # Wait until file is done playing
+
+def load_audio(student_audio_path,teacher_audio_path):
+    student_audio, sr = librosa.load(student_audio_path, sr=44100)
+    teacher_audio, sr = librosa.load(teacher_audio_path, sr=44100)
+
+    teacher_trimmed, index = librosa.effects.trim(teacher_audio ,top_db=20, frame_length = 2048,hop_length=512)
+    student_trimmed, index = librosa.effects.trim(student_audio ,top_db=20, frame_length = 2048,hop_length=512)  
+
+
+    teacher_freq = librosa.yin(teacher_trimmed,fmin=75,fmax=600)
+    student_freq = librosa.yin(student_trimmed,fmin=75,fmax=600)
+
+    return teacher_freq,student_freq
+
+def freq_to_note(teacher_freq, student_freq,tonic_freq):
+    # Convert frequencies to notes using Sa as 220 Hz for teacher and 207 Hz for student
+    # Sa is chosen as 220 Hz (A3) for teacher and 207 Hz (G#3) for student to account for pitch differences
+    # Convert Hz -> ratio to tonic.
+    # Ratio -> cents.
+    # Cents -> nearest svara index.
+    # Find deviation from exact equal-tempered svara.
+    teacher_notes = librosa.hz_to_svara_h(teacher_freq, Sa=220.0, abbr = False)
+    student_notes = librosa.hz_to_svara_h(student_freq, Sa=tonic_freq, abbr = False)
+
+    for i in range(len(student_notes)):
+        print(f"Student Note: {student_notes[i]}, Frequency: {student_freq[i]:.2f} Hz")
+
+    return teacher_notes
+
+def DTW_Analysis(student_freq,teacher_freq):
+    # Compute DTW cost matrix
+    cost_matrix = compute_dtw_cost_matrix(student_freq, teacher_freq)
+    # Find optimal DTW path
+    acc_cost, path = find_optimal_dtw_path(cost_matrix)
+    
+    return cost_matrix,path
+
+def note_durations(notes):
+    # Segment teacher notes into continuous segments and store their start and end indices along with the note
+    notes_duration = []
+    start_idx = 0
+    end_idx = 0
+
+    for i in range(len(notes)-1):
+        if notes[i] == notes[i+1]:
+            end_idx = i+1
+        else:
+            duration = end_idx - start_idx + 1
+            notes_duration.append((notes[i], start_idx , end_idx))
+            start_idx = i+1
+            end_idx = i+1    
+
+    notes_duration.append((notes[-1], start_idx , len(notes)-1))
+
+    return notes_duration
+
+def mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path):
+
+    normalized_teacher_freq = 12.0 * np.log2(teacher_freq / np.nanmean(teacher_freq))
+    normalized_student_freq = 12.0 * np.log2(student_freq / np.nanmean(student_freq))
+    # Note wise mistake analysis for student audio based on DTW path and cost matrix and mean frequency difference
+    student_mistakes = []
+
+    for i in range(len(notes_duration)):
+        student = []
+        teacher = []
+        cost = 0
+        for j in range(notes_duration[i][1],notes_duration[i][2]+1):
+            teacher.append(normalized_teacher_freq[j])
+            for k in range(len(path)):
+                if path[k][1] == j:
+                        # print("The path is-",path[k],"\n\n")
+                        student.append(path[k][0]) 
+                        cost += cost_matrix[path[k][0]][path[k][1]]   
+        student_mean = abs(np.mean(normalized_student_freq[student]))
+        teacher_mean = abs(np.mean(teacher))
+        
+        mean_diff = (abs(student_mean - teacher_mean))/(student_mean + teacher_mean)
+        
+        if cost*mean_diff > 0.05:   # Threshold has to be tuned 
+            
+            student_mistakes.append((student[0],student[-1]))
+
+    student_mistakes = list(dict.fromkeys(student_mistakes))
+
+    student_mistakes_duration = []
+
+    for (i,j) in student_mistakes:
+        student_mistakes_duration.append(i)
+        student_mistakes_duration.append(j)
+
+    student_times = librosa.frames_to_time(student_mistakes_duration, sr=44100, hop_length=512)
+
+    student_mistakes_times = []
+
+    for i in range(0,len(student_mistakes_duration),2):
+        if student_times[i] < student_times[i+1]:   # to avoid negative durations
+            student_mistakes_times.append((student_times[i],student_times[i+1]))
+
+    for (i,j) in student_mistakes_times:
+        print(f"Start Time: {i:.2f} s, End Time: {j:.2f} s")
+
+    return student_mistakes, student_mistakes_times    
+
+
+def main():
+
+    # STEP 1 - Set the tonic frequency for user input
+    chunk = 1024
+    sample_format = pa.paInt16
+    channels = 1    
+    fs = 44100
+    seconds = 15  # Duration of recording
+    filename = "output.wav"
+
+    tonic_freq = set_tonic_frequency(filename,chunk,channels,sample_format,fs)
+
+    # STEP 2 - Playback the teachers Audio
+
+    teacher_audio_path = "C:/Users/abhin/OneDrive/Pictures/JAVASCRIPT/BCI_Challenge/Groove/audio_subset/teacher/20220330101307.wav"
+    play_teacher_audio(teacher_audio_path)
+
+    # STEP 3 - Record Student Audio
+
+    start_recording(filename,channels,sample_format,fs,chunk,seconds)
+    teacher_audio, sr = librosa.load(teacher_audio_path, sr=44100)
+    student_audio_path = "output.wav"
+
+    # STEP 4 - Playback the recorded Audio
+    play_recorded_audio(filename)
+
+    # STEP 5 - Analyze the Audio to detect mistakes
+
+    teacher_freq,  student_freq = load_audio(student_audio_path,teacher_audio_path)
+    teacher_notes = freq_to_note(teacher_freq,student_freq,tonic_freq)
+    
+    notes_duration = note_durations(teacher_notes)
+
+    cost_matrix,path = DTW_Analysis(student_freq,teacher_freq)
+
+    student_mistakes, student_mistake_times = mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path)
+
+    # STEP 6 - Save the final results in RESULTS.csv
+
+    df = pd.DataFrame(student_mistake_times, columns=['Start Time (s)', 'End Time (s)'])
+    df.to_csv('RESULTS.csv', index=False)
+
+
+if __name__ == "__main__":
+    # Run the complete pipeline
+    main()
