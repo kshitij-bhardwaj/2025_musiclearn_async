@@ -1,3 +1,4 @@
+
 # Complete DTW Pipeline using Direct Pitch Extraction
 import pandas as pd
 import numpy as np
@@ -136,30 +137,11 @@ def process_metadata_csv(metadata_file, normalization_method='semitones'):
     
     return results
 
-import librosa
-
-def semitone_to_hz(semitone, tonic_hz):
-    """Convert semitone-normalized value back to Hz using the tonic."""
-    return tonic_hz * (2 ** (semitone / 12))
-
-def get_sargam_boundaries(sa_freq):
-    swaras = [
-        "Sa", "Komal Re", "Shuddh Re", "Komal Ga", "Shuddh Ga", "Ma", "Tivra Ma",
-        "Pa", "Komal Dha", "Shuddh Dha", "Komal Ni", "Shuddh Ni", "Sa (next)"
-    ]
-    offsets = np.arange(13)
-    swara_freqs = sa_freq * (2 ** (offsets / 12))
-    boundaries = [(swara_freqs[i] + swara_freqs[i+1]) / 2 for i in range(len(swara_freqs)-1)]
-    boundaries = [swara_freqs[0] - (boundaries[0] - swara_freqs[0])] + boundaries + [swara_freqs[-1] + (swara_freqs[-1] - boundaries[-1])]
-    return swaras, boundaries, swara_freqs
-
-def map_to_sargam(frequency, sa_freq):
-    """Map frequency (Hz) to nearest Sargam note using tonic."""
-    if frequency <= 0:
-        return 'Silence'
-    swaras, boundaries, _ = get_sargam_boundaries(sa_freq)
-    idx = np.digitize([frequency], boundaries)[0]
-    return swaras[idx] if idx < len(swaras) else swaras[-1]
+# SARGAM note mapping
+SARGAM_NOTES = {
+    'Sa': 261.63, 'Re': 293.66, 'Ga': 329.63, 
+    'Ma': 349.23, 'Pa': 392.00, 'Dha': 440.00, 'Ni': 493.88
+}
 
 class DTWAnalyzer:
     def __init__(self, pitch_data):
@@ -300,47 +282,51 @@ class DTWAnalyzer:
 
     
     # This section is to be verified
-    def map_to_sargam(frequency, sa_freq):
+    def map_to_sargam(self, frequency):
         """
-        Map frequency (Hz) to nearest Sargam note using the given tonic (Sa frequency).
+        Map frequency to nearest SARGAM note
         """
         if frequency <= 0:
             return 'Silence'
-        swaras, boundaries, _ = get_sargam_boundaries(sa_freq)
-        idx = np.digitize([frequency], boundaries)[0]
-        return swaras[idx] if idx < len(swaras) else swaras[-1]
+            
+        # Convert back to Hz if using semitones (approximate)
+        if abs(frequency) < 50:  # Likely semitone representation
+            # This is a rough approximation - you may need to adjust based on your normalization
+            freq_hz = 220 * (2 ** (frequency / 12))  # Using A3 as reference
+        else:
+            freq_hz = abs(frequency)
+        
+        distances = {note: abs(freq_hz - freq) for note, freq in SARGAM_NOTES.items()}
+        return min(distances, key=distances.get)
     
     def analyze_note_correspondences(self, pair_data, cost_matrix, path):
+        """
+        Analyze note correspondences and calculate durations
+        """
         student_pitch = pair_data['student']['pitch']
         teacher_pitch = pair_data['teacher']['pitch']
         student_times = pair_data['student']['times']
-        s_scale = pair_data['metadata']['s_scale']
-        t_scale = pair_data['metadata']['t_scale']
-
-        # Get tonic frequencies
-        s_sa_freq = librosa.note_to_hz(s_scale.split()[0])
-        t_sa_freq = librosa.note_to_hz(t_scale.split()[0])
-
-        # Convert semitone-normalized pitch back to Hz
-        student_pitch_hz = [semitone_to_hz(st, s_sa_freq) for st in student_pitch]
-        teacher_pitch_hz = [semitone_to_hz(tt, t_sa_freq) for tt in teacher_pitch]
-
-        # Map to Sargam using the correct tonic
-        student_notes = [map_to_sargam(f, s_sa_freq) for f in student_pitch_hz]
-        teacher_notes = [map_to_sargam(f, t_sa_freq) for f in teacher_pitch_hz]
-
+        
+        # Map frequencies to SARGAM notes
+        student_notes = [self.map_to_sargam(f) for f in student_pitch]
+        teacher_notes = [self.map_to_sargam(f) for f in teacher_pitch]
+        
+        # Calculate student duration (as requested)
         student_duration = student_times[-1] - student_times[0] if len(student_times) > 1 else 0
-
+        
+        # Collect note pair costs along optimal path
         note_pair_costs = {}
+        
         for i, j in path:
             s_note = student_notes[i] if i < len(student_notes) else 'Silence'
             t_note = teacher_notes[j] if j < len(teacher_notes) else 'Silence'
             note_pair = (s_note, t_note)
             cost = cost_matrix[i, j]
+            
             if note_pair not in note_pair_costs:
                 note_pair_costs[note_pair] = []
             note_pair_costs[note_pair].append(cost)
-
+        
         return {
             'student_notes': student_notes,
             'teacher_notes': teacher_notes,
@@ -476,43 +462,84 @@ class DTWAnalyzer:
             for note_pair, cost in sorted(max_costs.items()):
                 print(f"    {note_pair[0]}→{note_pair[1]}: {cost:.4f}")
 
-    def extract_pitch_mistakes(self, path, cost_matrix, student_times, student_notes, teacher_notes, threshold=0.3):
-     """
-      Identify pitch mistakes from the DTW path using a threshold on cost.
+    #def extract_pitch_mistakes(self, path, cost_matrix, student_times, student_notes, teacher_notes, threshold=0.3):
+    #  """
+    #   Identify pitch mistakes from the DTW path using a threshold on cost.
 
-      Parameters:
-     - path: list of (i, j) tuples (DTW alignment path)
-     - cost_matrix: computed DTW cost matrix
-     - student_times: time values for each student pitch frame
-     - student_notes: list of mapped student notes (e.g., ['Sa', 'Re', ...])
-     - teacher_notes: list of mapped teacher notes
-     - threshold: cost above which a pitch difference is considered a mistake
+    #   Parameters:
+    #  - path: list of (i, j) tuples (DTW alignment path)
+    #  - cost_matrix: computed DTW cost matrix
+    #  - student_times: time values for each student pitch frame
+    #  - student_notes: list of mapped student notes (e.g., ['Sa', 'Re', ...])
+    #  - teacher_notes: list of mapped teacher notes
+    #  - threshold: cost above which a pitch difference is considered a mistake
 
-     Returns:
-     - List of dictionaries with mistake information
-     """
-     mistakes = []
+    #  Returns:
+    #  - List of dictionaries with mistake information
+    #  """
+    #  mistakes = []
 
-     for (i, j) in path:
-        if i >= len(student_times):
-            continue
+    #  for (i, j) in path:
+    #     if i >= len(student_times):
+    #         continue
 
-        cost = cost_matrix[i, j]
-        if cost > threshold:
-            mistake = {
-                'time': student_times[i],
-                'cost': cost,
-                'student_note': student_notes[i] if i < len(student_notes) else 'Silence',
-                'teacher_note': teacher_notes[j] if j < len(teacher_notes) else 'Silence'
-            }
-            mistakes.append(mistake)
+    #     cost = cost_matrix[i, j]
+    #     if cost > threshold:
+    #         mistake = {
+    #             'time': student_times[i],
+    #             'cost': cost,
+    #             'student_note': student_notes[i] if i < len(student_notes) else 'Silence',
+    #             'teacher_note': teacher_notes[j] if j < len(teacher_notes) else 'Silence'
+    #         }
+    #         mistakes.append(mistake)
 
-     return mistakes                
+    #  return mistakes        
 
-    def plot_pitch_mistakes_with_teacher_comparison(self,pair_id, result, save_dir="mistake_plots", threshold=0.3):
+    def extract_mistake_segments(path, cost_matrix, student_times, cost_threshold=0.3, min_segment_length=0.3, max_gap=0.2):
+        """
+        Extract mistake ranges (start_time, end_time) from DTW path and cost matrix.
+
+        Returns:
+            - list of (start_time, end_time) for mistake segments
+        """
+        mistake_times = []
+
+        # Step 1: collect all time points where cost > threshold
+        for (i, j) in path:
+            if i < len(student_times) and cost_matrix[i, j] > cost_threshold:
+                mistake_times.append(student_times[i])
+
+        if not mistake_times:
+            return []
+
+        # Step 2: group into segments based on time gaps
+        mistake_times.sort()
+        segments = []
+        start_time = mistake_times[0]
+        prev_time = start_time
+
+        for t in mistake_times[1:]:
+            if t - prev_time <= max_gap:
+                prev_time = t
+            else:
+                # End current segment
+                if prev_time - start_time >= min_segment_length:
+                    segments.append((start_time, prev_time))
+                start_time = t
+                prev_time = t
+
+        # Final segment
+        if prev_time - start_time >= min_segment_length:
+            segments.append((start_time, prev_time))
+
+        return segments
+
+
+
+    def plot_pitch_mistakes_with_teacher_comparison(self, pair_id, result, save_dir="mistake_plots", threshold=0.3):
         """
         Generate a plot comparing student and teacher pitch with mistake highlights and DTW alignment.
-    
+
         Parameters:
         - pair_id: ID string of the pair (e.g., "pair_0")
         - result: dict returned by DTWAnalyzer.analyze_single_pair()
@@ -521,20 +548,19 @@ class DTWAnalyzer:
         """
         os.makedirs(save_dir, exist_ok=True)
 
-        # Extract data
         path = result['optimal_path']
         cost_matrix = result['cost_matrix']
-        student_pitch = result['note_correspondences']['student_notes']
-        teacher_pitch = result['note_correspondences']['teacher_notes']
-        student_times = result['note_correspondences']['student_duration']
-        student_times = result['note_correspondences']['student_notes']
-        teacher_times = result['note_correspondences']['teacher_notes']
 
-        # Get arrays again to retrieve time and pitch
         student_times_arr = result['pair_id_data']['student']['times']
         teacher_times_arr = result['pair_id_data']['teacher']['times']
         student_pitch_arr = result['pair_id_data']['student']['pitch']
         teacher_pitch_arr = result['pair_id_data']['teacher']['pitch']
+
+        # Use extract_mistake_segments to find mistake time ranges
+        mistake_segments = DTWAnalyzer.extract_mistake_segments(
+            path, cost_matrix, student_times_arr,
+            cost_threshold=threshold, min_segment_length=0.3, max_gap=0.2
+        )
 
         plt.figure(figsize=(14, 7))
 
@@ -542,29 +568,18 @@ class DTWAnalyzer:
         plt.plot(student_times_arr, student_pitch_arr, color='blue', label='Student Pitch')
         plt.plot(teacher_times_arr, teacher_pitch_arr, color='green', label='Teacher Pitch')
 
-        # Plot all DTW alignment connections as light gray dotted lines
-        for (i, j) in path:
-            if i < len(student_times_arr) and j < len(teacher_times_arr):
+        # Plot a subset of DTW alignment connections as light gray dotted lines
+        for idx, (i, j) in enumerate(path):
+            if i < len(student_times_arr) and j < len(teacher_times_arr) and idx % 3 == 0:
                 plt.plot(
                     [student_times_arr[i], teacher_times_arr[j]],
                     [student_pitch_arr[i], teacher_pitch_arr[j]],
                     color='gray', linestyle='dotted', linewidth=0.5, alpha=0.4
                 )
 
-        # Now plot mistakes as red dots (student) and black Xs (teacher)
-        for (i, j) in path:
-            if i >= len(student_times_arr) or j >= len(teacher_times_arr):
-                continue
-
-            cost = cost_matrix[i, j]
-            if cost > threshold:
-                plt.plot(student_times_arr[i], student_pitch_arr[i], 'ro', label='Student Mistake' if 'Student Mistake' not in plt.gca().get_legend_handles_labels()[1] else "")
-                plt.plot(teacher_times_arr[j], teacher_pitch_arr[j], 'kx', label='Expected Teacher Pitch' if 'Expected Teacher Pitch' not in plt.gca().get_legend_handles_labels()[1] else "")
-                plt.plot(
-                    [student_times_arr[i], teacher_times_arr[j]],
-                    [student_pitch_arr[i], teacher_pitch_arr[j]],
-                    'r--', linewidth=1, alpha=0.8
-                )
+        # Shade mistake segments
+        for start, end in mistake_segments:
+            plt.axvspan(start, end, color='red', alpha=0.2, label='Mistake Region' if 'Mistake Region' not in plt.gca().get_legend_handles_labels()[1] else "")
 
         plt.xlabel("Time (s)")
         plt.ylabel("Pitch (Normalized)")
@@ -576,6 +591,71 @@ class DTWAnalyzer:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"Saved mistake plot to: {save_path}")
         plt.close()
+
+
+    def plot_minimal_mistake_segments_with_notes(pair_id, result, save_dir="note_mistake_plots", threshold=0.3):
+        """
+        Minimal pitch mistake plot with:
+        - Student & teacher pitch
+        - Red shaded mistake regions
+        - Vertical dashed note boundaries
+        - SARGAM note labels over student note regions
+        """
+        import os
+        import matplotlib.pyplot as plt
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        student_times = result['pair_id_data']['student']['times']
+        teacher_times = result['pair_id_data']['teacher']['times']
+        student_pitch = result['pair_id_data']['student']['pitch']
+        teacher_pitch = result['pair_id_data']['teacher']['pitch']
+        cost_matrix = result['cost_matrix']
+        path = result['optimal_path']
+        student_notes = result['note_correspondences']['student_notes']
+
+    # === Mistake Segments ===
+        mistake_segments = DTWAnalyzer.extract_mistake_segments(
+            path, cost_matrix, student_times,
+            cost_threshold=threshold,
+            min_segment_length=0.3,
+            max_gap=0.2
+        )
+
+        # === Note Boundaries & Labels ===
+        note_changes = [0]
+        for i in range(1, len(student_notes)):
+            if student_notes[i] != student_notes[i - 1]:
+                note_changes.append(i)
+        note_boundaries = [student_times[i] for i in note_changes]
+        note_labels = [student_notes[i] for i in note_changes]
+
+        # === Plot ===
+        plt.figure(figsize=(12, 5))
+        plt.plot(student_times, student_pitch, label="Student", color="blue", linewidth=1.2)
+        plt.plot(teacher_times, teacher_pitch, label="Teacher", color="green", linewidth=1.2)
+
+        # Mistake shaded regions
+        for start, end in mistake_segments:
+            plt.axvspan(start, end, color="red", alpha=0.3, label="Mistake" if "Mistake" not in plt.gca().get_legend_handles_labels()[1] else "")
+
+        # Note boundary lines and labels
+        for i, x in enumerate(note_boundaries):
+            plt.axvline(x, color="gray", linestyle="--", linewidth=0.7, alpha=0.5)
+            plt.text(x + 0.01, max(student_pitch) + 0.5, note_labels[i], fontsize=9, rotation=0, ha='left', color='black')
+
+        plt.xlabel("Time (s)")
+        plt.ylabel("Pitch (Normalized)")
+        plt.title(f"Minimal Mistake Plot with Notes - {pair_id}")
+        plt.legend()
+        plt.grid(True, linestyle=':', linewidth=0.5)
+        plt.tight_layout()
+
+        save_path = os.path.join(save_dir, f"minimal_mistakes_{pair_id}.png")
+        plt.savefig(save_path, dpi=300)
+        plt.close()
+        print(f"Saved annotated mistake plot to: {save_path}")
+
 
 
 # Main execution function
@@ -608,23 +688,28 @@ def main():
     # Step 4: Display comprehensive results
     print("\nStep 4: Displaying results...")
     dtw_analyzer.print_summary_results(analysis_results)
+
+    for pair_id, result in analysis_results.items():
+        result['pair_id_data'] = dtw_analyzer.pitch_data[pair_id]
+        dtw_analyzer.plot_minimal_mistake_segments_with_notes(pair_id, result)
+
     
     
     # Step 5: Visualize cost matrix for all pairs and save to 'plots/' directory
     print("\nStep 5: Visualizing cost matrices for all pairs...")
 
-    #Create 'plots' directory if it doesn't exist
-    os.makedirs("new_dtw_plots", exist_ok=True)
+    # Create 'plots' directory if it doesn't exist
+    # os.makedirs("new_dtw_plots", exist_ok=True)
 
-    for pair_id, result in analysis_results.items():
-        print(f"  Generating cost matrix plot for {pair_id}...")
-        dtw_analyzer.visualize_cost_matrix(
-        result,
-        save_path=os.path.join("new_dtw_plots", f"dtw_cost_matrix_{pair_id}.png")
-    )
+    # for pair_id, result in analysis_results.items():
+    #     print(f"  Generating cost matrix plot for {pair_id}...")
+    #     dtw_analyzer.visualize_cost_matrix(
+    #     result,
+    #     save_path=os.path.join("new_dtw_plots", f"dtw_cost_matrix_{pair_id}.png")
+    # )
 
-    #Step 6: Visualize pitch mistakes
-    result['pair_id_data'] = dtw_analyzer.pitch_data[pair_id]
+    # Step 6: Visualize pitch mistakes
+    # result['pair_id_data'] = dtw_analyzer.pitch_data[pair_id]
     
     for pair_id, result in analysis_results.items():
         result['pair_id_data'] = dtw_analyzer.pitch_data[pair_id]  # Attach original data
@@ -634,6 +719,7 @@ def main():
     # Step 7: Save detailed results to CSV
     print("\nStep 6: Saving detailed results...")
     detailed_results = []
+
     
     for pair_id, result in analysis_results.items():
         # Extract metadata from original pitch data
