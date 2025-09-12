@@ -319,6 +319,9 @@ def mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path)
         if student_times[i] < student_times[i+1]:   # to avoid negative durations
             student_mistakes_times.append((student_times[i],student_times[i+1]))
 
+    for (i,j) in student_mistakes_times:
+        print("Start time:",i,"End time:",j)
+
     return student_mistakes, student_mistakes_times    
 
 
@@ -361,7 +364,7 @@ if (audio_value):
     st.audio(audio_value)
 
 teacher_audio, sr = librosa.load(teacher_audio_path, sr=44100)
-student_audio_path = audio_value
+student_audio_path = teacher_audio_path
 
 # STEP 5 - Analyze the Audio to detect mistakes
 
@@ -376,6 +379,40 @@ if(audio_value):
         cost_matrix,path = DTW_Analysis(student_freq,teacher_freq)
 
         student_mistakes, student_mistake_times = mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path)
+
+        fig, ax = plt.subplots(figsize=(12, 4))
+        # time axis for student_freq (frames -> seconds)
+        times = librosa.frames_to_time(np.arange(len(student_freq)), sr=44100, hop_length=512)
+
+        # plot full student pitch contour
+        ax.plot(times, student_freq, color='tab:blue', linewidth=1, label='Student Pitch')
+
+        # overlay mistake spans in red using the start/end times from student_mistake_times
+        if student_mistake_times:
+            for (t_start, t_end) in student_mistake_times:
+                # clamp to valid range
+                t0 = max(0.0, float(t_start))
+                t1 = max(t0, float(t_end))
+
+                # mask frames that fall inside the mistake interval and overplot them in red
+                mask = (times >= t0) & (times <= t1)
+                if np.any(mask):
+                    ax.plot(times[mask], student_freq[mask], color='red', linewidth=2)
+
+                # draw faint vertical boundary lines at start and end
+                ax.axvline(t0, color='red', linestyle='--', linewidth=0.8, alpha=0.8)
+                ax.axvline(t1, color='red', linestyle='--', linewidth=0.8, alpha=0.8)
+        else:
+            st.info("No mistakes detected to overlay on the plot.")
+
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Frequency (Hz)')
+        ax.set_title('Student Pitch with Mistake Segments')
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='upper right', fontsize='small')
+
+        # show plot in Streamlit
+        st.pyplot(fig)
 
 # STEP 6 - Display the final results 
 
