@@ -1,5 +1,5 @@
 streamlit
-librosa==0.10.2.post1
+librosa==0.10.2
 numpy
 matplotlib
 pandas
