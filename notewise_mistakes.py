@@ -2,7 +2,6 @@ import librosa
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import pyaudio as pa
 import wave
 import sounddevice as sd
 import soundfile as sf
@@ -128,47 +127,47 @@ def get_sargam_boundaries(sa_freq):
     return boundaries
 
 
-def set_tonic_frequency(filename,chunk,channels,sample_format,fs):
+def set_tonic_frequency(filename,chunk,channels,fs):
     
-    p = pa.PyAudio()
+    # p = pa.PyAudio()
 
-    print("Set your tonic frequency (Sa)")
+    # print("Set your tonic frequency (Sa)")
 
-    stream = p.open(format=sample_format,
-                        channels=channels,
-                        rate=fs,
-                        frames_per_buffer=chunk,
-                        input=True,)
+    # stream = p.open(format=sample_format,
+    #                     channels=channels,
+    #                     rate=fs,
+    #                     frames_per_buffer=chunk,
+    #                     input=True,)
 
-    frames = []
+    # frames = []
 
-    for i in range(0, int(fs / chunk * 3)):
-            data = stream.read(chunk)
-            frames.append(data)
+    # for i in range(0, int(fs / chunk * 3)):
+    #         data = stream.read(chunk)
+    #         frames.append(data)
 
-    stream.stop_stream()
-    stream.close()
-
-
-    print('Finished recording tonic frequency')
-
-    wf = wave.open(filename, 'wb')
-    wf.setnchannels(channels)   
-    wf.setsampwidth(p.get_sample_size(sample_format))
-    wf.setframerate(fs)
-    wf.writeframes(b''.join(frames))
-    wf.close()
+    # stream.stop_stream()
+    # stream.close()
 
 
-    data,fs = sf.read(filename,dtype='float32')
-    sd.play(data,fs)
-    status = sd.wait()  # Wait until file is done playing
+    # print('Finished recording tonic frequency')
+
+    # wf = wave.open(filename, 'wb')
+    # wf.setnchannels(channels)   
+    # wf.setsampwidth(p.get_sample_size(sample_format))
+    # wf.setframerate(fs)
+    # wf.writeframes(b''.join(frames))
+    # wf.close()
+
+
+    # data,fs = sf.read(filename,dtype='float32')
+    # sd.play(data,fs)
+    # status = sd.wait()  # Wait until file is done playing
 
     tonic_audio = librosa.load(filename,sr=44100)
     tonic_freqencies = librosa.yin(tonic_audio[0],fmin=75,fmax=600)
     tonic_freq = np.median(tonic_freqencies)
 
-    print("Tonic frequency is set to:",tonic_freq)
+    #print("Tonic frequency is set to:",tonic_freq)
 
     return tonic_freq
 
@@ -183,38 +182,38 @@ def play_teacher_audio(teacher_audio_path):
 
     print("Teacher audio finished playing")
 
-def start_recording(filename,channels,sample_format,fs,chunk,seconds):
+# def start_recording(filename,channels,sample_format,fs,chunk,seconds):
     
-    print("Now record your audio")
+#     print("Now record your audio")
 
-    print('Recording')
+#     print('Recording')
 
-    p = pa.PyAudio()
+#     p = pa.PyAudio()
 
-    stream = p.open(format=sample_format,
-                    channels=channels,
-                    rate=fs,
-                    frames_per_buffer=chunk,
-                    input=True)
+#     stream = p.open(format=sample_format,
+#                     channels=channels,
+#                     rate=fs,
+#                     frames_per_buffer=chunk,
+#                     input=True)
 
-    frames = []
+#     frames = []
 
-    for i in range(0, int(fs / chunk * seconds)):
-        data = stream.read(chunk)
-        frames.append(data)
+#     for i in range(0, int(fs / chunk * seconds)):
+#         data = stream.read(chunk)
+#         frames.append(data)
 
-    stream.stop_stream()
-    stream.close() 
-    p.terminate()
+#     stream.stop_stream()
+#     stream.close() 
+#     p.terminate()
 
-    print('Finished recording')
+#     print('Finished recording')
 
-    wf = wave.open(filename, 'wb')
-    wf.setnchannels(channels)   
-    wf.setsampwidth(p.get_sample_size(sample_format))
-    wf.setframerate(fs)
-    wf.writeframes(b''.join(frames))
-    wf.close()
+#     wf = wave.open(filename, 'wb')
+#     wf.setnchannels(channels)   
+#     wf.setsampwidth(p.get_sample_size(sample_format))
+#     wf.setframerate(fs)
+#     wf.writeframes(b''.join(frames))
+#     wf.close()
     
 
 def play_recorded_audio(filename):
@@ -335,7 +334,7 @@ st.text("Record your audio after listening to the teacher audio and learn where 
 
 # STEP 1 - Set the tonic frequency for user input
 chunk = 1024
-sample_format = pa.paInt16
+# sample_format = pa.paInt16
 channels = 1    
 fs = 44100
 seconds = 15  # Duration of recording
@@ -346,7 +345,10 @@ tonic_freq = 220.0
 option = st.selectbox("How do you want to set your tonic?",("Sing","Manual"),index=None)
 if (option == "Sing"):
     tonic_audio = st.audio_input("Record Tonic")
-    tonic_freq = set_tonic_frequency(tonic_audio,chunk,channels,sample_format,fs)
+    if(tonic_audio):
+        tonic_freq = set_tonic_frequency(tonic_audio,chunk,channels,fs)
+        st.text("Tonic frequency is set to-")
+        st.write(tonic_freq)
 elif (option == "Manual"):
     tonic_freq = st.slider("Select your tonic-",60,500,220)
 # STEP 2 - Playback the teachers Audio
