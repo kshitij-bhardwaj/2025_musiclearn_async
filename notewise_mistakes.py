@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import wave
-import sounddevice as sd
 import soundfile as sf
 import streamlit as st
 import streamlit.web.cli as stcli
@@ -172,15 +171,15 @@ def set_tonic_frequency(filename,chunk,channels,fs):
     return tonic_freq
 
 
-def play_teacher_audio(teacher_audio_path):
+# def play_teacher_audio(teacher_audio_path):
     
-    print("Now playing the teacher audio")
+#     print("Now playing the teacher audio")
 
-    data,fs = sf.read(teacher_audio_path,dtype='float32')
-    sd.play(data,fs)
-    status = sd.wait()  # Wait until file is done playing
+#     data,fs = sf.read(teacher_audio_path,dtype='float32')
+#     sd.play(data,fs)
+#     status = sd.wait()  # Wait until file is done playing
 
-    print("Teacher audio finished playing")
+#     print("Teacher audio finished playing")
 
 # def start_recording(filename,channels,sample_format,fs,chunk,seconds):
     
@@ -216,12 +215,12 @@ def play_teacher_audio(teacher_audio_path):
 #     wf.close()
     
 
-def play_recorded_audio(filename):
+# def play_recorded_audio(filename):
     
-    print("Now playing your recorded audio")
-    data,fs = sf.read(filename,dtype='float32')
-    sd.play(data,fs)
-    status = sd.wait()  # Wait until file is done playing
+#     print("Now playing your recorded audio")
+#     data,fs = sf.read(filename,dtype='float32')
+#     sd.play(data,fs)
+#     status = sd.wait()  # Wait until file is done playing
 
 def load_audio(student_audio_path,teacher_audio_path):
     student_audio, sr = librosa.load(student_audio_path, sr=44100)
