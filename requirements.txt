@@ -1,3 +1,4 @@
+streamlit
 librosa
 numpy
 matplotlib
