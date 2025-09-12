@@ -352,7 +352,7 @@ elif (option == "Manual"):
     tonic_freq = st.slider("Select your tonic-",60,500,220)
 # STEP 2 - Playback the teachers Audio
 
-teacher_audio_path = "C:/Users/abhin/OneDrive/Pictures/JAVASCRIPT/BCI_Challenge/Groove/audio_subset/teacher/20220330101307.wav"
+teacher_audio_path = "audio_subset/teacher/20220330101307.wav"
 st.text("Listen to the teacher audio and try to sing in a similar way.")
 st.audio(teacher_audio_path,loop=True)
 # STEP 3 - Record Student Audio
