@@ -2,11 +2,19 @@ import librosa
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import pyaudio as pa
 import wave
-import sounddevice as sd
 import soundfile as sf
+import streamlit as st
+import streamlit.web.cli as stcli
 
+
+#Configure Page
+st.set_page_config(
+    page_title="ASYNC Audio Mistake Detection",
+    page_icon="logo.png",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 #DTW implementation
 
@@ -118,112 +126,101 @@ def get_sargam_boundaries(sa_freq):
     return boundaries
 
 
-def set_tonic_frequency(filename,chunk,channels,sample_format,fs):
+def set_tonic_frequency(filename,chunk,channels,fs):
     
-    p = pa.PyAudio()
+    # p = pa.PyAudio()
 
-    ans = input("Do you want to set tonic frequency? (y/n): ")
+    # print("Set your tonic frequency (Sa)")
 
-    if ans.lower() == 'y':
-        print("Set your tonic frequency (Sa)")
+    # stream = p.open(format=sample_format,
+    #                     channels=channels,
+    #                     rate=fs,
+    #                     frames_per_buffer=chunk,
+    #                     input=True,)
 
-        stream = p.open(format=sample_format,
-                        channels=channels,
-                        rate=fs,
-                        frames_per_buffer=chunk,
-                        input=True,)
+    # frames = []
 
-        frames = []
+    # for i in range(0, int(fs / chunk * 3)):
+    #         data = stream.read(chunk)
+    #         frames.append(data)
 
-        for i in range(0, int(fs / chunk * 3)):
-            data = stream.read(chunk)
-            frames.append(data)
-
-        stream.stop_stream()
-        stream.close()
+    # stream.stop_stream()
+    # stream.close()
 
 
-        print('Finished recording tonic frequency')
+    # print('Finished recording tonic frequency')
 
-        wf = wave.open(filename, 'wb')
-        wf.setnchannels(channels)   
-        wf.setsampwidth(p.get_sample_size(sample_format))
-        wf.setframerate(fs)
-        wf.writeframes(b''.join(frames))
-        wf.close()
+    # wf = wave.open(filename, 'wb')
+    # wf.setnchannels(channels)   
+    # wf.setsampwidth(p.get_sample_size(sample_format))
+    # wf.setframerate(fs)
+    # wf.writeframes(b''.join(frames))
+    # wf.close()
 
 
-        data,fs = sf.read(filename,dtype='float32')
-        sd.play(data,fs)
-        status = sd.wait()  # Wait until file is done playing
+    # data,fs = sf.read(filename,dtype='float32')
+    # sd.play(data,fs)
+    # status = sd.wait()  # Wait until file is done playing
 
-        tonic_audio = librosa.load(filename,sr=44100)
-        tonic_freqencies = librosa.yin(tonic_audio[0],fmin=75,fmax=600)
-        tonic_freq = np.median(tonic_freqencies)
+    tonic_audio = librosa.load(filename,sr=44100)
+    tonic_freqencies = librosa.yin(tonic_audio[0],fmin=75,fmax=600)
+    tonic_freq = np.median(tonic_freqencies)
 
-    else:
-        tonic_freq = 207.65
-
-    print("Tonic frequency is set to:",tonic_freq)
+    #print("Tonic frequency is set to:",tonic_freq)
 
     return tonic_freq
 
 
-def play_teacher_audio(teacher_audio_path):
+# def play_teacher_audio(teacher_audio_path):
     
-    input("Press Enter when you are ready to play the teacher audio ")
+#     print("Now playing the teacher audio")
 
-    print("Now playing the teacher audio")
+#     data,fs = sf.read(teacher_audio_path,dtype='float32')
+#     sd.play(data,fs)
+#     status = sd.wait()  # Wait until file is done playing
 
-    data,fs = sf.read(teacher_audio_path,dtype='float32')
-    sd.play(data,fs)
-    status = sd.wait()  # Wait until file is done playing
+#     print("Teacher audio finished playing")
 
-    print("Teacher audio finished playing")
-
-def start_recording(filename,channels,sample_format,fs,chunk,seconds):
+# def start_recording(filename,channels,sample_format,fs,chunk,seconds):
     
-    input("Press Enter when you are ready to record your audio ")
+#     print("Now record your audio")
 
-    print("Now record your audio")
+#     print('Recording')
 
-    print('Recording')
+#     p = pa.PyAudio()
 
-    p = pa.PyAudio()
+#     stream = p.open(format=sample_format,
+#                     channels=channels,
+#                     rate=fs,
+#                     frames_per_buffer=chunk,
+#                     input=True)
 
-    stream = p.open(format=sample_format,
-                    channels=channels,
-                    rate=fs,
-                    frames_per_buffer=chunk,
-                    input=True)
+#     frames = []
 
-    frames = []
+#     for i in range(0, int(fs / chunk * seconds)):
+#         data = stream.read(chunk)
+#         frames.append(data)
 
-    for i in range(0, int(fs / chunk * seconds)):
-        data = stream.read(chunk)
-        frames.append(data)
+#     stream.stop_stream()
+#     stream.close() 
+#     p.terminate()
 
-    stream.stop_stream()
-    stream.close() 
-    p.terminate()
+#     print('Finished recording')
 
-    print('Finished recording')
-
-    wf = wave.open(filename, 'wb')
-    wf.setnchannels(channels)   
-    wf.setsampwidth(p.get_sample_size(sample_format))
-    wf.setframerate(fs)
-    wf.writeframes(b''.join(frames))
-    wf.close()
+#     wf = wave.open(filename, 'wb')
+#     wf.setnchannels(channels)   
+#     wf.setsampwidth(p.get_sample_size(sample_format))
+#     wf.setframerate(fs)
+#     wf.writeframes(b''.join(frames))
+#     wf.close()
     
 
-def play_recorded_audio(filename):
+# def play_recorded_audio(filename):
     
-    input("Press Enter when you are ready to play your recorded audio ")
-    print("Now playing your recorded audio")
-    data,fs = sf.read(filename,dtype='float32')
-    sd.play(data,fs)
-    status = sd.wait()  # Wait until file is done playing
+#     print("Now playing your recorded audio")
+#     data,fs = sf.read(filename,dtype='float32')
+#     sd.play(data,fs)
+#     status = sd.wait()  # Wait until file is done playing
 
 def load_audio(student_audio_path,teacher_audio_path):
     student_audio, sr = librosa.load(student_audio_path, sr=44100)
@@ -248,10 +245,7 @@ def freq_to_note(teacher_freq, student_freq,tonic_freq):
     teacher_notes = librosa.hz_to_svara_h(teacher_freq, Sa=220.0, abbr = False)
     student_notes = librosa.hz_to_svara_h(student_freq, Sa=tonic_freq, abbr = False)
 
-    for i in range(len(student_notes)):
-        print(f"Student Note: {student_notes[i]}, Frequency: {student_freq[i]:.2f} Hz")
-
-    return teacher_notes
+    return teacher_notes,student_notes
 
 def DTW_Analysis(student_freq,teacher_freq):
     # Compute DTW cost matrix
@@ -323,55 +317,175 @@ def mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path)
         if student_times[i] < student_times[i+1]:   # to avoid negative durations
             student_mistakes_times.append((student_times[i],student_times[i+1]))
 
-    for (i,j) in student_mistakes_times:
-        print(f"Start Time: {i:.2f} s, End Time: {j:.2f} s")
+    # for (i,j) in student_mistakes_times:
+    #     print("Start time:",i,"End time:",j)
 
     return student_mistakes, student_mistakes_times    
 
+def plot_student_pitch_with_mistakes(freq, notes, sr, title, mistake_times):
+    """
+    Plots the student's pitch contour with svara labels and highlights mistakes in red,
+    and renders the resulting figure to Streamlit (st.pyplot).
+    """
+    hop_length = 512
+    time_frames = librosa.frames_to_time(np.arange(len(freq)), sr=sr, hop_length=hop_length)
 
-def main():
+    # ensure float array and mark unvoiced as NaN
+    valid_freq = np.array(freq, dtype=float)
+    valid_freq[valid_freq == 0] = np.nan
 
-    # STEP 1 - Set the tonic frequency for user input
-    chunk = 1024
-    sample_format = pa.paInt16
-    channels = 1    
-    fs = 44100
-    seconds = 15  # Duration of recording
-    filename = "output.wav"
+    fig, ax = plt.subplots(figsize=(15, 8))
+    ax.plot(time_frames, valid_freq, 'b-', linewidth=2, alpha=0.7, label='Student Pitch Contour')
+    ax.fill_between(time_frames, valid_freq, alpha=0.3)
 
-    tonic_freq = set_tonic_frequency(filename,chunk,channels,sample_format,fs)
+    # Highlight mistake segments in red
+    for start_time, end_time in mistake_times:
+        mask = (time_frames >= start_time) & (time_frames <= end_time)
+        if np.any(mask):
+            ax.plot(time_frames[mask], valid_freq[mask], 'r-', linewidth=3, alpha=0.8)
+            ax.fill_between(time_frames[mask], valid_freq[mask], color='red', alpha=0.2)
 
-    # STEP 2 - Playback the teachers Audio
+    # Add a legend entry for the mistake segments
+    ax.plot([], [], 'r-', linewidth=3, alpha=0.8, label='Mistake Segments')
 
-    teacher_audio_path = "C:/Users/abhin/OneDrive/Pictures/JAVASCRIPT/BCI_Challenge/Groove/audio_subset/teacher/20220330101307.wav"
-    play_teacher_audio(teacher_audio_path)
+    # Add svara labels along the pitch contour (sparse)
+    step = max(1, len(time_frames) // 15)
+    for i in range(0, len(time_frames), step):
+        if not np.isnan(valid_freq[i]):
+            ax.annotate(notes[i],
+                        (time_frames[i], valid_freq[i]),
+                        xytext=(0, 15),
+                        textcoords='offset points',
+                        fontsize=12,
+                        ha='center',
+                        weight='bold',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.8))
 
-    # STEP 3 - Record Student Audio
+    ax.set_title(title)
+    ax.set_ylabel('Frequency (Hz)')
+    ax.set_xlabel('Time (seconds)')
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(75, 600)
+    ax.legend()
+    plt.tight_layout()
 
-    start_recording(filename,channels,sample_format,fs,chunk,seconds)
-    teacher_audio, sr = librosa.load(teacher_audio_path, sr=44100)
-    student_audio_path = "output.wav"
+    # Render to Streamlit and close figure to avoid duplicate output
+    st.pyplot(fig)
+    plt.close(fig)
 
-    # STEP 4 - Playback the recorded Audio
-    play_recorded_audio(filename)
 
-    # STEP 5 - Analyze the Audio to detect mistakes
+st.title("GROOVE", anchor=None, help=None, width="stretch")
+st.divider()
+st.header("Sing along and learn music on your own pace")
+st.divider()
+st.text("Record your audio after listening to the teacher audio and learn where you are making mistakes")
 
-    teacher_freq,  student_freq = load_audio(student_audio_path,teacher_audio_path)
-    teacher_notes = freq_to_note(teacher_freq,student_freq,tonic_freq)
+# STEP 1 - Set the tonic frequency for user input
+chunk = 1024
+# sample_format = pa.paInt16
+channels = 1    
+fs = 44100
+seconds = 15  # Duration of recording
+filename = "output.wav"
+
+tonic_freq = 220.0
+
+option = st.selectbox("How do you want to set your tonic?",("Sing","Manual"),index=None)
+if (option == "Sing"):
+    tonic_audio = st.audio_input("Record Tonic")
+    if(tonic_audio):
+        tonic_freq = set_tonic_frequency(tonic_audio,chunk,channels,fs)
+        st.text("Tonic frequency is set to-")
+        st.write(tonic_freq)
+elif (option == "Manual"):
+    tonic_freq = st.slider("Select your tonic-",60,500,220)
+# STEP 2 - Playback the teachers Audio
+
+teacher_audio_path = "20220330101307.wav"
+st.text("Listen to the teacher audio and try to sing in a similar way.")
+st.audio(teacher_audio_path,loop=True)
+# STEP 3 - Record Student Audio
+
+audio_value = st.audio_input("Record your Audio")
+
+# STEP 4 - Playback the recorded Audio
+if (audio_value):
+    st.text("Play your recorded audio")
+    st.audio(audio_value)
+
+teacher_audio, sr = librosa.load(teacher_audio_path, sr=44100)
+student_audio_path = audio_value
+
+# STEP 5 - Analyze the Audio to detect mistakes
+
+if(audio_value):
+    if(st.button("Analyze my Audio",type="primary")):
+        teacher_freq,  student_freq = load_audio(student_audio_path,teacher_audio_path)
+        
+        teacher_notes,student_notes = freq_to_note(teacher_freq,student_freq,tonic_freq)
     
-    notes_duration = note_durations(teacher_notes)
+        notes_duration = note_durations(teacher_notes)
 
-    cost_matrix,path = DTW_Analysis(student_freq,teacher_freq)
+        cost_matrix,path = DTW_Analysis(student_freq,teacher_freq)
 
-    student_mistakes, student_mistake_times = mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path)
+        student_mistakes, student_mistake_times = mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path)
 
-    # STEP 6 - Save the final results in RESULTS.csv
+        teacher_mistakes = []
 
-    df = pd.DataFrame(student_mistake_times, columns=['Start Time (s)', 'End Time (s)'])
-    df.to_csv('RESULTS.csv', index=False)
+        if (student_mistake_times):
+            plot_student_pitch_with_mistakes(student_freq,student_notes,fs,"Student Mistakes",mistake_times=student_mistake_times)
+            plot_student_pitch_with_mistakes(teacher_freq,teacher_notes,fs,"Teacher Pitch Contour",teacher_mistakes)
+
+        else:
+            st.info("No mistakes detected to overlay on the plot.")
+            plot_student_pitch_with_mistakes(student_freq,student_notes,fs,"Student Mistakes",mistake_times=student_mistake_times)
+
+        fig, ax = plt.subplots(figsize=(12, 4))
+        # time axis for student_freq (frames -> seconds)
+        times = librosa.frames_to_time(np.arange(len(student_freq)), sr=44100, hop_length=512)
+
+        # plot full student pitch contour
+        ax.plot(times, student_freq, color='tab:blue', linewidth=1, label='Student Pitch')
+
+        # overlay mistake spans in red using the start/end times from student_mistake_times
+        if student_mistake_times:
+            for (t_start, t_end) in student_mistake_times:
+                # clamp to valid range
+                t0 = max(0.0, float(t_start))
+                t1 = max(t0, float(t_end))
+
+                # mask frames that fall inside the mistake interval and overplot them in red
+                mask = (times >= t0) & (times <= t1)
+                if np.any(mask):
+                    ax.plot(times[mask], student_freq[mask], color='red', linewidth=2)
+
+                # draw faint vertical boundary lines at start and end
+                ax.axvline(t0, color='red', linestyle='--', linewidth=0.8, alpha=0.8)
+                ax.axvline(t1, color='red', linestyle='--', linewidth=0.8, alpha=0.8)
+        else:
+            st.info("No mistakes detected to overlay on the plot.")
+
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Frequency (Hz)')
+        ax.set_title('Student Pitch with Mistake Segments')
+        ax.grid(True, alpha=0.3)
+        ax.legend(loc='upper right', fontsize='small')
+        # show plot in Streamlit
+        st.pyplot(fig)
+
+# STEP 6 - Display the final results 
+
+# df = pd.DataFrame(student_mistake_times, columns=['Start Time (s)', 'End Time (s)'])
+# df.to_csv('RESULTS.csv', index=False)
 
 
-if __name__ == "__main__":
-    # Run the complete pipeline
-    main()
+
+
+
+
+
+
+
+
+
+
