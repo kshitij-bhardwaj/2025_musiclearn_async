@@ -245,7 +245,7 @@ def freq_to_note(teacher_freq, student_freq,tonic_freq):
     teacher_notes = librosa.hz_to_svara_h(teacher_freq, Sa=220.0, abbr = False)
     student_notes = librosa.hz_to_svara_h(student_freq, Sa=tonic_freq, abbr = False)
 
-    return teacher_notes
+    return teacher_notes,student_notes
 
 def DTW_Analysis(student_freq,teacher_freq):
     # Compute DTW cost matrix
@@ -317,12 +317,61 @@ def mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path)
         if student_times[i] < student_times[i+1]:   # to avoid negative durations
             student_mistakes_times.append((student_times[i],student_times[i+1]))
 
-    for (i,j) in student_mistakes_times:
-        print("Start time:",i,"End time:",j)
+    # for (i,j) in student_mistakes_times:
+    #     print("Start time:",i,"End time:",j)
 
     return student_mistakes, student_mistakes_times    
 
+def plot_student_pitch_with_mistakes(freq, notes, sr, title, mistake_times):
+    """
+    Plots the student's pitch contour with svara labels and highlights mistakes in red,
+    and renders the resulting figure to Streamlit (st.pyplot).
+    """
+    hop_length = 512
+    time_frames = librosa.frames_to_time(np.arange(len(freq)), sr=sr, hop_length=hop_length)
 
+    # ensure float array and mark unvoiced as NaN
+    valid_freq = np.array(freq, dtype=float)
+    valid_freq[valid_freq == 0] = np.nan
+
+    fig, ax = plt.subplots(figsize=(15, 8))
+    ax.plot(time_frames, valid_freq, 'b-', linewidth=2, alpha=0.7, label='Student Pitch Contour')
+    ax.fill_between(time_frames, valid_freq, alpha=0.3)
+
+    # Highlight mistake segments in red
+    for start_time, end_time in mistake_times:
+        mask = (time_frames >= start_time) & (time_frames <= end_time)
+        if np.any(mask):
+            ax.plot(time_frames[mask], valid_freq[mask], 'r-', linewidth=3, alpha=0.8)
+            ax.fill_between(time_frames[mask], valid_freq[mask], color='red', alpha=0.2)
+
+    # Add a legend entry for the mistake segments
+    ax.plot([], [], 'r-', linewidth=3, alpha=0.8, label='Mistake Segments')
+
+    # Add svara labels along the pitch contour (sparse)
+    step = max(1, len(time_frames) // 15)
+    for i in range(0, len(time_frames), step):
+        if not np.isnan(valid_freq[i]):
+            ax.annotate(notes[i],
+                        (time_frames[i], valid_freq[i]),
+                        xytext=(0, 15),
+                        textcoords='offset points',
+                        fontsize=12,
+                        ha='center',
+                        weight='bold',
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.8))
+
+    ax.set_title(title)
+    ax.set_ylabel('Frequency (Hz)')
+    ax.set_xlabel('Time (seconds)')
+    ax.grid(True, alpha=0.3)
+    ax.set_ylim(75, 600)
+    ax.legend()
+    plt.tight_layout()
+
+    # Render to Streamlit and close figure to avoid duplicate output
+    st.pyplot(fig)
+    plt.close(fig)
 
 
 st.title("GROOVE", anchor=None, help=None, width="stretch")
@@ -365,7 +414,7 @@ if (audio_value):
     st.audio(audio_value)
 
 teacher_audio, sr = librosa.load(teacher_audio_path, sr=44100)
-student_audio_path = teacher_audio_path
+student_audio_path = audio_value
 
 # STEP 5 - Analyze the Audio to detect mistakes
 
@@ -373,13 +422,23 @@ if(audio_value):
     if(st.button("Analyze my Audio",type="primary")):
         teacher_freq,  student_freq = load_audio(student_audio_path,teacher_audio_path)
         
-        teacher_notes = freq_to_note(teacher_freq,student_freq,tonic_freq)
+        teacher_notes,student_notes = freq_to_note(teacher_freq,student_freq,tonic_freq)
     
         notes_duration = note_durations(teacher_notes)
 
         cost_matrix,path = DTW_Analysis(student_freq,teacher_freq)
 
         student_mistakes, student_mistake_times = mistake_detection(notes_duration,teacher_freq,student_freq,cost_matrix,path)
+
+        teacher_mistakes = []
+
+        if (student_mistake_times):
+            plot_student_pitch_with_mistakes(student_freq,student_notes,fs,"Student Mistakes",mistake_times=student_mistake_times)
+            plot_student_pitch_with_mistakes(teacher_freq,teacher_notes,fs,"Teacher Pitch Contour",teacher_mistakes)
+
+        else:
+            st.info("No mistakes detected to overlay on the plot.")
+            plot_student_pitch_with_mistakes(student_freq,student_notes,fs,"Student Mistakes",mistake_times=student_mistake_times)
 
         fig, ax = plt.subplots(figsize=(12, 4))
         # time axis for student_freq (frames -> seconds)
@@ -411,7 +470,6 @@ if(audio_value):
         ax.set_title('Student Pitch with Mistake Segments')
         ax.grid(True, alpha=0.3)
         ax.legend(loc='upper right', fontsize='small')
-
         # show plot in Streamlit
         st.pyplot(fig)
 
